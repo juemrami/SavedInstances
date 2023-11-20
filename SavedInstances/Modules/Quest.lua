@@ -1,4 +1,6 @@
+---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
+---@class QuestModule : AceModule
 local Module = SI:NewModule('Quest')
 
 -- Lua functions

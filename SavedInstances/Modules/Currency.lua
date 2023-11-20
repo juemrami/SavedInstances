@@ -1,11 +1,13 @@
+---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
+---@class CurrencyModule : AceModule , AceEvent-3.0, AceTimer-3.0, AceBucket-3.0
 local Module = SI:NewModule('Currency', 'AceEvent-3.0', 'AceTimer-3.0', 'AceBucket-3.0')
 
 -- Lua functions
 local ipairs, pairs = ipairs, pairs
 
 -- WoW API / Variables
-local C_Covenants_GetActiveCovenantID = C_Covenants.GetActiveCovenantID
+local C_Covenants_GetActiveCovenantID = C_Covenants and C_Covenants.GetActiveCovenantID -- not in Wotlk client
 local C_CurrencyInfo_GetCurrencyInfo = C_CurrencyInfo.GetCurrencyInfo
 local C_QuestLog_IsQuestFlaggedCompleted = C_QuestLog.IsQuestFlaggedCompleted
 local GetItemCount = GetItemCount
@@ -17,7 +19,20 @@ local currency = {
   2588, -- Riders of Azeroth Badge
 
   -- Wrath of the Lich King
+  61, -- Dalaran Jewelcrafter's Token
+  81, -- Epicurean Award
+  101, -- Emblem of Heroism
+  102, -- Emblem of Valor
+  126, -- Wintergrasp Mark of Honor
+  161, -- Stone Keeper's Shard
+  221, -- Emblem of Conquest
   241, -- Champion's Seal
+  301, -- Emblem of Triumph
+  341, -- Emblem of Frost
+  1900, -- Arena Points
+  1901, -- Honor Points
+  2711, -- Defiler's Scourgestone
+  2589, -- Sidereal Essence
 
   -- Cataclysm
   391, -- Tol Barad Commendation
@@ -118,8 +133,11 @@ local currency = {
 SI.currency = currency
 
 local currencySorted = {}
-for _, idx in ipairs(currency) do
-  table.insert(currencySorted, idx)
+for _, currencyID in ipairs(currency) do
+  -- only include currencies that exist in client.
+  if C_CurrencyInfo_GetCurrencyInfo(currencyID) then
+    table.insert(currencySorted, currencyID)
+  end
 end
 table.sort(currencySorted, function (c1, c2)
   local c1_name = C_CurrencyInfo_GetCurrencyInfo(c1).name
@@ -220,7 +238,7 @@ function Module:UpdateCurrency()
   t.Money = GetMoney()
   t.currency = t.currency or {}
 
-  local covenantID = C_Covenants_GetActiveCovenantID()
+  local covenantID = C_Covenants_GetActiveCovenantID and C_Covenants_GetActiveCovenantID()
   for _,idx in ipairs(currency) do
     local data = C_CurrencyInfo_GetCurrencyInfo(idx)
     if not data.discovered and not hiddenCurrency[idx] then
@@ -249,7 +267,7 @@ function Module:UpdateCurrency()
         if tbl.relatedItem then
           ci.relatedItemCount = GetItemCount(tbl.relatedItem.id)
         end
-      elseif idx == 1822 then -- Renown
+      elseif covenantID and idx == 1822 then -- Renown
         -- plus one to amount and totalMax
         ci.amount = ci.amount + 1
         ci.totalMax = ci.totalMax + 1
@@ -257,7 +275,7 @@ function Module:UpdateCurrency()
           ci.covenant = ci.covenant or {}
           ci.covenant[covenantID] = ci.amount
         end
-      elseif idx == 1810 or idx == 1813 then -- Redeemed Soul and Reservoir Anima
+      elseif covenantID and (idx == 1810 or idx == 1813) then -- Redeemed Soul and Reservoir Anima
         if covenantID > 0 then
           ci.covenant = ci.covenant or {}
           ci.covenant[covenantID] = ci.amount

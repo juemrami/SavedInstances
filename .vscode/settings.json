@@ -1,0 +1,6 @@
+{
+    "cSpell.enabled": true,
+    "Lua.diagnostics.globals": [
+        "DUNGEON_DIFFICULTY3"
+    ]
+}

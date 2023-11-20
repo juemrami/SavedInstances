@@ -276,7 +276,8 @@
         "wipe",
         "WORLD_MAP_THREATS",
         "YELLOW_FONT_COLOR_CODE",
-        "ZONE"
+        "ZONE",
+        "GetEffectivePlayerMaxLevel"
     ],
     "diagnostics.disable": [
         "lowercase-global",
