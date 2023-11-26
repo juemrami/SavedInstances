@@ -1,4 +1,5 @@
 ---@class SavedInstances
+---@field logout boolean
 local SI, L = unpack((select(2, ...)))
 ---@class CurrencyModule : AceModule , AceEvent-3.0, AceTimer-3.0, AceBucket-3.0
 local Module = SI:NewModule('Currency', 'AceEvent-3.0', 'AceTimer-3.0', 'AceBucket-3.0')
@@ -133,10 +134,12 @@ local currency = {
 SI.currency = currency
 
 local currencySorted = {}
+local validCurrencies = {}
 for _, currencyID in ipairs(currency) do
-  -- only include currencies that exist in client.
+  -- check for nil currencies 
   if C_CurrencyInfo_GetCurrencyInfo(currencyID) then
     table.insert(currencySorted, currencyID)
+    table.insert(validCurrencies, currencyID)
   end
 end
 table.sort(currencySorted, function (c1, c2)
@@ -145,6 +148,7 @@ table.sort(currencySorted, function (c1, c2)
   return c1_name < c2_name
 end)
 SI.currencySorted = currencySorted
+SI.validCurrencies = validCurrencies
 
 local hiddenCurrency = {
 }
@@ -241,7 +245,7 @@ function Module:UpdateCurrency()
   local covenantID = C_Covenants_GetActiveCovenantID and C_Covenants_GetActiveCovenantID()
   for _,idx in ipairs(currency) do
     local data = C_CurrencyInfo_GetCurrencyInfo(idx)
-    if not data.discovered and not hiddenCurrency[idx] then
+    if not data or (not data.discovered and not hiddenCurrency[idx]) then
       t.currency[idx] = nil
     else
       local ci = t.currency[idx] or {}

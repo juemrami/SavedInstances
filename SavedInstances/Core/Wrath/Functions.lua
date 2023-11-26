@@ -7,12 +7,18 @@ local format, strmatch, strupper = format, strmatch, strupper
 
 -- WoW API / Variables
 local C_Map_GetBestMapForUnit = C_Map.GetBestMapForUnit
-local C_UnitAuras_GetPlayerAuraBySpellID = C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID -- not in Wotlk client
-local AuraUtil_FindAuraByName = AuraUtil and AuraUtil.FindAuraByName -- alternative
+-- C_UnitAuras not in WotLK client
+local C_UnitAuras_GetPlayerAuraBySpellID = C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID 
+-- Use `GetSpellInfo` and `AuraUtil.FindAuraByName` as an alternative 
+local GetSpellInfo = GetSpellInfo
+local AuraUtil_FindAuraByName = AuraUtil and AuraUtil.FindAuraByName 
 local GetCurrentRegion = GetCurrentRegion
 local GetCVar = GetCVar
 local GetTime = GetTime
 
+--- Get the expiration time of a player aura by spell ID.
+---@param spellID number
+---@return number? expirationTime Time the aura expires compared to GetTime()
 function SI:GetPlayerAuraExpirationTime(spellID)
   if C_UnitAuras_GetPlayerAuraBySpellID then
     local info = C_UnitAuras_GetPlayerAuraBySpellID(spellID)
@@ -20,7 +26,7 @@ function SI:GetPlayerAuraExpirationTime(spellID)
   elseif AuraUtil_FindAuraByName then -- alternative
     local name = GetSpellInfo(spellID)
     if name then
-      local _, _, _, _, _, _, expirationTime = AuraUtil_FindAuraByName(name, 'player')
+      local _, _, _, _, _, expirationTime = AuraUtil_FindAuraByName(name, 'player')
       return expirationTime
     end
   end
@@ -28,6 +34,7 @@ end
 
 -- Chat Message and Bug Report Reminder
 function SI:ChatMsg(...)
+  ---@diagnostic disable-next-line: undefined-field
   _G.DEFAULT_CHAT_FRAME:AddMessage('|cFFFF0000SavedInstances|r: ' .. format(...))
 end
 

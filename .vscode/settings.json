@@ -1,6 +1,44 @@
 {
-    "cSpell.enabled": true,
+    "files.exclude": {
+        "**/.git": false,
+        "**/.git/[^i]**": true
+    },
+    "cSpell.enabled": false,
     "Lua.diagnostics.globals": [
-        "DUNGEON_DIFFICULTY3"
+        "DUNGEON_DIFFICULTY3",
+        "show",
+        "EXPANSION_LEVEL",
+        "class",
+        "tonumber",
+        "ipairs",
+        "_G",
+        "UnitRace",
+        "UnitFactionGroup",
+        "AuraUtil",
+        "unpack",
+        "select",
+        "pairs",
+        "print",
+        "C_AchievementInfo",
+        "table",
+        "type",
+        "tostring",
+        "next",
+        "strfind",
+        "CopyTable",
+        "random",
+        "tIndexOf",
+        "AddonCompartmentFrame"
+    ],
+    "cSpell.enableFiletypes": [
+        "lua"
+    ],
+    "cSpell.words": [
+        "Bliz",
+        "curr",
+        "Dalaran",
+        "Jewelcrafter's",
+        "savedinstances",
+        "Warfront"
     ]
 }

@@ -1,3 +1,4 @@
+---@class SavedInstances.Wrath
 local SI, L = unpack((select(2, ...)))
 
 -- Lua functions
@@ -11,16 +12,20 @@ local C_Calendar_SetAbsMonth = C_Calendar.SetAbsMonth
 local GetQuestResetTime = GetQuestResetTime
 
 do
-  local GTToffset = time() - GetTime()
-  function SI:GetTimeToTime(val)
-    if not val then return end
-    return val + GTToffset
+  --- Unix timestamp in seconds of the current time minus the player's computer system uptime.
+  local gttOffset = time() - GetTime()
+  ---@param futureTime number? Either a Unix timestamp in seconds or a number of seconds from now.
+  ---@return number? timeToTime Unix timestamp in seconds of the future time minus the player's computer system uptime. nil if futureTime is nil.
+  function SI:GetTimeToTime(futureTime)
+    if not futureTime then return end
+    return gttOffset + futureTime
   end
 end
 
--- returns how many hours the server time is ahead of local time
--- convert local time -> server time: add this value
--- convert server time -> local time: subtract this value
+--- returns how many hours the server time is ahead of local time.
+--- To convert local time -> server time: add this value
+--- To convert server time -> local time: subtract this value
+---@return number offset
 function SI:GetServerOffset()
   local serverDate = C_DateAndTime_GetCurrentCalendarTime() -- 1-based starts on Sun
   local serverWeekday, serverMinute, serverHour = serverDate.weekday - 1, serverDate.minute, serverDate.hour
@@ -41,9 +46,9 @@ end
 function SI:GetNextDailyResetTime()
   local resetTime = GetQuestResetTime()
   if (
-    not resetTime or resetTime <= 0 or -- ticket 43: can fail during startup
-    -- also right after a daylight savings rollover, when it returns negative values >.<
-    resetTime > 24 * 60 * 60 + 30 -- can also be wrong near reset in an instance
+    not resetTime -- ticket 43: can fail during startup
+    or resetTime <= 0 -- also right after a daylight savings rollover, when it returns negative values >.<
+    or resetTime > 24 * 60 * 60 + 30 -- can also be wrong near reset in an instance
   ) then
     return
   end

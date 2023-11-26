@@ -171,14 +171,20 @@ function SI:specialQuests()
           qinfo.name = name.." ("..LOOT..")"
         end
       end
-    elseif not qinfo.name and qinfo.aid and qinfo.acid then
+    elseif not qinfo.name and qinfo.aid and qinfo.acid 
+      and C_AchievementInfo.IsValidAchievement(qinfo.aid) 
+    then
+      print("SI:specialQuests", qid, qinfo.aid, qinfo.acid)
       local l = GetAchievementCriteriaInfo(qinfo.aid, qinfo.acid)
       if l then
         qinfo.name = l:gsub("%p$","")
       end
     elseif not qinfo.name and qinfo.aid then
       SI.ScanTooltip:SetOwner(_G.UIParent, 'ANCHOR_NONE')
-      SI.ScanTooltip:SetAchievementByID(qinfo.aid)
+      -- following member function is not in the wotlk client
+      if SI.ScanTooltip.SetAchievementByID then
+        SI.ScanTooltip:SetAchievementByID(qinfo.aid)
+      end
       SI.ScanTooltip:Show()
       local l = _G[SI.ScanTooltip:GetName().."Text"..(qinfo.aline or "Left1")]
       l = l and l:GetText()

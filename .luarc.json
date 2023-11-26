@@ -277,7 +277,13 @@
         "WORLD_MAP_THREATS",
         "YELLOW_FONT_COLOR_CODE",
         "ZONE",
-        "GetEffectivePlayerMaxLevel"
+        "GetEffectivePlayerMaxLevel",
+        "EXPANSION_LEVEL",
+        "IsTradeSkillLinked",
+        "GetNumTradeSkills",
+        "GetTradeSkillCooldown",
+        "GetNumTalentTabs",
+        "GetTalentTabInfo"
     ],
     "diagnostics.disable": [
         "lowercase-global",

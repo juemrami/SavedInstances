@@ -24,7 +24,6 @@ Locales\Locale.lua
 Core\Wrath\Functions.lua
 Core\Wrath\Time.lua
 Core\Wrath\Tooltip.lua
-
 Core\Wrath\Debug.lua
 
 # modules
@@ -33,13 +32,13 @@ Core\Wrath\Debug.lua
 Modules\Quest.lua
 Modules\Currency.lua
 Modules\Wrath\Progress.lua
+Modules\Wrath\TradeSkill.lua
 # Modules\BonusRoll.lua
 # Modules\Calling.lua
 # Modules\Emissary.lua
 # Modules\LFR.lua
 # Modules\MythicPlus.lua
 # Modules\Paragon.lua
-# Modules\TradeSkill.lua
 # Modules\Warfront.lua
 # Modules\WorldBoss.lua
 
