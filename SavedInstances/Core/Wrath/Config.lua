@@ -139,7 +139,7 @@ local function GetIndicatorOptions()
           type = "select",
           width = "half",
           name = EMBLEM_SYMBOL,
-          values = SI.Indicators
+          values = SI.IndicatorIconTextures
         },
         [difficultyID.."Text"] = {
           order = 2,

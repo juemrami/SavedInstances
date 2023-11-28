@@ -7,18 +7,22 @@ local date, floor, time, tonumber = date, floor, time, tonumber
 -- WoW API / Variables
 local C_DateAndTime_GetCurrentCalendarTime = C_DateAndTime.GetCurrentCalendarTime
 local C_DateAndTime_GetSecondsUntilWeeklyReset = C_DateAndTime.GetSecondsUntilWeeklyReset
+local C_DateAndTime_GetSecondsUntilDailyReset = C_DateAndTime.GetSecondsUntilDailyReset
 local C_Calendar_GetMonthInfo = C_Calendar.GetMonthInfo
 local C_Calendar_SetAbsMonth = C_Calendar.SetAbsMonth
 local GetQuestResetTime = GetQuestResetTime
 
 do
   --- Unix timestamp in seconds of the current time minus the player's computer system uptime.
+  --- When added to `GetTime()` result in a unix timestamp in seconds.
   local gttOffset = time() - GetTime()
-  ---@param futureTime number? Either a Unix timestamp in seconds or a number of seconds from now.
+
+  --- Returns unix timestamp in seconds of the time after the passed `seconds` have elapsed.
+  ---@param seconds number? A number of seconds from now.
   ---@return number? timeToTime Unix timestamp in seconds of the future time minus the player's computer system uptime. nil if futureTime is nil.
-  function SI:GetTimeToTime(futureTime)
-    if not futureTime then return end
-    return gttOffset + futureTime
+  function SI:GetTimeToTime(seconds)
+    if not seconds then return end
+    return gttOffset + seconds
   end
 end
 
@@ -43,14 +47,17 @@ function SI:GetServerOffset()
   return offset
 end
 
+--- Returns unix timestamp in seconds of the next daily reset time.
+---@return number? resetTimestamp nil if the reset time cannot be determined.
 function SI:GetNextDailyResetTime()
   local resetTime = GetQuestResetTime()
-  if (
-    not resetTime -- ticket 43: can fail during startup
+  resetTime = resetTime or C_DateAndTime_GetSecondsUntilDailyReset() -- try C API
+
+  if not resetTime -- ticket 43: `GetQuestResetTime()` can fail during startup
     or resetTime <= 0 -- also right after a daylight savings rollover, when it returns negative values >.<
     or resetTime > 24 * 60 * 60 + 30 -- can also be wrong near reset in an instance
-  ) then
-    return
+  then
+    return 
   end
 
   return time() + resetTime
@@ -58,12 +65,14 @@ end
 
 SI.GetNextDailySkillResetTime = SI.GetNextDailyResetTime
 
+--- Returns unix timestamp in seconds for the next weekly reset.
+---@return number resetTimestamp
 function SI:GetNextWeeklyResetTime()
   return time() + C_DateAndTime_GetSecondsUntilWeeklyReset()
 end
 
 do
-  local darkmoonEnd = {hour=23, min=59}
+  local darkmoonEnd = { hour=23, min=59 }
   function SI:GetNextDarkmoonResetTime()
     -- Darkmoon faire runs from first Sunday of each month to following Saturday
     -- this function returns an approximate time after the end of the current month's faire
