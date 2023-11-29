@@ -1,3 +1,4 @@
+---@class SavedInstances.Wrath
 local SI, L = unpack((select(2, ...)))
 
 -- Lua functions

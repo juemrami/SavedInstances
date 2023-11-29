@@ -7,6 +7,14 @@
 ---@field private activeHolidays table<number|string, boolean>
 ---@field private instacesUpdated boolean? nil before first use in UI
 ---@field private RefreshPending boolean? flag for running `SI:Refresh` on next `SI:UpdateInstanceData`
+---@field private delayUpdate number? Timestamp indicating when its okay for `SI:HistoryUpdate` to run. Used to delay updates while settings stabilize
+---@field private histInGroup ("PARTY"|"RAID")? result of `SI:InGroup()` when `SI:HistoryUpdate` was last run. 
+---@field hisLastZone string? Last instance zone seen by `SI:HistoryUpdate`
+---@field private lasthistdbg string? Last history update's debug message.
+---@field private histLiveCount number? Number of lockouts used towards the hourly limit. Calculated last time `SI:HistoryUpdate` was run.
+---@field private histOldest string? Formatted remaining time until the oldest lockout towards the `histLimit` expires.
+---@field private memusage number? Last memory usage reported by `SI:memcheck`
+---@field private warned table<string, boolean>? list of localized dungeon names for which a dungeon missing bug report has been sent to the user.
 local SI, L = unpack((select(2, ...)))
 
 local QTip = SI.Libs.QTip
@@ -104,7 +112,7 @@ SI.Categories = {}
 -- alternatively could removed the unused code entirely
 SI.LFRInstances = {}
 
----@type {[number]: {eid: number?, name: string?, expansion: number?, holiday: boolean?, random: boolean?, remove: boolean?, level: number?, lfdid: number?}}
+---@type {[number]: {eid: number?, name: string, expansion: number?, holiday: boolean?, random: boolean?, remove: boolean?, level: number?, lfdid: number?, quest: number?, savename: string? }}
 SI.WorldBosses = {} 
 SI.Emissaries = {}
 
@@ -232,6 +240,7 @@ end
 ---@field Zone UiMapDetails
 ---@field isDaily boolean
 ---@field Expires number? For weekly or monthly quest expirations dates.
+----@field type? "daily"|"weekly" 
 
 ---@class SavedInstances.Wrath.Toon.Skill
 ---@field Title string
@@ -322,13 +331,15 @@ end
 --    }
 --  }
 
+---If instance is an LFR, lockout info can be keyed by encounter index to check if said encounter has been completed for the week.
 ---@class SavedInstances.Wrath.DB.Instance.LockoutInfo
----@field ID number the instance's `lockoutID` (as seen in /raidinfo). Set to `-1` for non-raid lockouts.
+---@field ID number the instance's `lockoutID` (as seen in /raidinfo). Set to `-1` for non-raid lockouts, and `-1*numBosses` for LFR wings.
 ---@field Expires number
 ---@field Locked boolean whether toon is locked to the save
 ---@field Extended boolean? whether this is an extended raid lockout
 ---@field Link string? hyperlink to the save in /raidinfo (doesnt work in either era or wotlk)
-
+----@field type? "lfr"|"premade"|"random"|"holiday"|"scenario"|"worldboss" etc
+---@field [number] boolean # LFR isLooted keyed by encounter index using `GetLFGDungeonEncounterInfo`
 
 ---Table containing info relating to the saved var `Instance` entry. Table can also be queried by [toonName][[difficultyID](https://wago.tools/db2/Difficulty)]
 ---mapping to a `SavedInstances.Wrath.DB.Instance.LockoutInfo` table, 
@@ -351,21 +362,23 @@ end
 --- The Addon's store. The data in this table is stored in blizzard's `SavedVariables` file for this addon.
 ---@class SavedInstances.Wrath.DB
 ---@field DBVersion number Internal version of the database "schema".
----@field History table<string, number> For tracking instance per hour limit. Maps instance name to value of `GetTime()` when instance was entered.
+---@field History table<string, {create: number, desc: string, last: number?}> For tracking instance per hour limit. Maps keys from `SI:histZoneKey` to value of `GetTime()` when instance was entered.
 ---@field histGeneration number Number in range [1-100000]. Defaults to `1`. Incremented when a instance reset is incurred while not in a zone. 
 ---@field Toons table<string, SavedInstances.Wrath.Toon> Keyed by "Toon - Realm".
 ---@field spelltip table<number, string[]> Keyed by SpellID is any array of strings corresponding to the lines for the spells buff/debuff tooltip.
 ---@field Quests table<number, SavedInstances.Wrath.Toon.Quest> Account-wide quests keyed by QuestID. Sames struct as `Toon.Quests`. 
----@field QuestDB table<SavedInstances.QuestDBQuestType, table<number, QuestDBData>> Permanent repeatable quest DBs each keyed by questID mapping to the quest's turnin location's mapID
+---@field QuestDB table<SavedInstances.QuestDBQuestType, QuestDBEntry> Permanent repeatable quest DBs each keyed by questID mapping to the quest's turnin location's mapID
 ---@field Warfront table? Unused in Wrath. todo define class `SavedInstances.DB.Warfront` using comment in defaultDB
 ---@field Emmisary table? Unused in Wrath. todo define class and subClasses `SavedInstances.DB.Emmisary` using comment in defaultDB
 ---@field RealmMap {[string]: number, [number]: string[]} Used to track connected realms. Keying by realm name returns an index. Keying by this index returns a table of connected realms.
 ---@field Instances table<string, SavedInstances.Wrath.DB.Instance.Entry> Keyed by instance's lfg name. 
----@field DailyReseetTime number? Unix timestamp in seconds of the next daily reset.
+---@field DailyResetTime number? Unix timestamp in seconds of the next daily reset.
 ---@field Progress {["Enable"]: table<string, boolean>, ["Order"]: table<string, number>, ["User"]: table}
 SI.defaultDB = {
   DBVersion = 12,
   histGeneration = 1,
+  ---@type boolean?
+  dbg = nil,
   History = { 
     -- key: instance string; value: time first entered
   },
@@ -577,6 +590,7 @@ SI.defaultDB = {
     ShowExpired = false,
     ShowHoliday = true,
     ShowRandom = true,
+    DebugMode = false,
     CombineWorldBosses = false,
     CombineLFR = true,
     TrackDailyQuests = true,
@@ -647,8 +661,9 @@ SI.defaultDB = {
   Instances = { 
   }, 	
   MinimapIcon = { hide = false },
-  Quests = {},  -- Account-wide Quests:  key: QuestID  value: same as toon Quest database
+  Quests = {},
   QuestDB = {
+    ---@alias QuestDBEntry {expires?: number, [number]: number} # contains hash of mapID's keyed by questID
     Daily = {},
     Weekly = {},
     Darkmoon = {},
@@ -922,36 +937,46 @@ function SI:FindInstance(name, isRaid)
   return nil
 end
 
--- provide either id or name/raid to get the instance truename and db entry
-function SI:LookupInstance(id, name, raid)
+--- Provide either id or name and raid status to get the instance's key and entry from `SI.db.Instances`.
+---@param id number? [LfgDungeonID](https://warcraft.wiki.gg/wiki/LfgDungeonID).
+---@param instanceName string? localized instance name.
+---@param isRaid boolean?
+---@return string? instanceKey
+---@return SavedInstances.Wrath.DB.Instance.Entry|{} instanceEntry empty table or tableref to `SI.db.Instances[instanceKey]`
+function SI:LookupInstance(id, instanceName, isRaid)
   -- SI:Debug("LookupInstance("..(id or "nil")..","..(name or "nil")..","..(raid and "true" or "false")..")")
-  local truename, instance
-  if name then
-    truename, id = SI:FindInstance(name, raid)
+  ---@type string?
+  local key, entry = nil, {}
+  if instanceName then
+    key, id = SI:FindInstance(instanceName, isRaid)
   end
   if id then
-    truename = SI:UpdateInstance(id)
+    key = SI:UpdateInstance(id)
   end
-  if truename then
-    instance = SI.db.Instances[truename]
+  if key then
+    entry = SI.db.Instances[key]
   end
-  if not instance then
-    SI:Debug("LookupInstance() failed to find instance: "..(name or "")..":"..(id or 0).." : "..GetLocale())
+  if not entry then
+    SI:Debug("LookupInstance() failed to find instance: "
+      ..(instanceName or "")..":"..(id or 0).." : "..GetLocale()
+    )
     SI.warned = SI.warned or {}
-    if not SI.warned[name] then
-      SI.warned[name] = true
-      local lid
+    if not SI.warned[instanceName] then
+      SI.warned[instanceName] = true
+      local linkDungeonID
       for i = 1, GetNumSavedInstances() do
         local link = GetSavedInstanceChatLink(i) or ""
-        local tlid,tlname = link:match(":(%d+):%d+:%d+\124h%[(.+)%]\124h")
-        if tlname == name then lid = tlid end
+        local idFromLink, nameFromLink = link:match(":(%d+):%d+:%d+\124h%[(.+)%]\124h")
+        if nameFromLink == instanceName then 
+          linkDungeonID = idFromLink 
+        end
       end
-      SI:BugReport("SavedInstances: ERROR: Refresh() failed to find instance: "..name.." : "..GetLocale().." : "..(lid or "x"))
+      SI:BugReport("SavedInstances: ERROR: Refresh() failed to find instance: "..instanceName.." : "..GetLocale().." : "..(linkDungeonID or "x"))
     end
-    instance = {}
+    entry = {}
     --SI.db.Instances[name] = instance
   end
-  return truename, instance
+  return key, entry
 end
 
 function SI:InstanceCategory(instance)
@@ -3351,76 +3376,118 @@ function SI:BOSS_KILL(event, encounterID, encounterName, ...)
   end
 end
 
+--- Get the group type for the currently logged in character.
+--- returns `nil` if not in a group.
+---@return "RAID"|"PARTY"? groupType
 function SI:InGroup()
   if IsInRaid() then return "RAID"
   elseif GetNumGroupMembers() > 0 then return "PARTY"
   else return nil end
 end
 
-local function doExplicitReset(instancemsg, failed)
+--- Called whenever an *actual* instance reset it preformed.
+--- calls `SI:HistoryUpdate` and  sends a "GENERATION_ADVANCE" addon message to the group on successful resets.
+--- Sends a chat message if the options is set.
+local function doExplicitReset(instanceMsg, resetFailed)
   if HasLFGRestrictions() or IsInInstance() or
     (SI:InGroup() and not UnitIsGroupLeader("player")) then return end
-  if not failed then
+  if not resetFailed then
     SI:HistoryUpdate(true)
   end
 
-  local reportchan = SI:InGroup()
-  if reportchan then
-    if not failed then
-      C_ChatInfo.SendAddonMessage("SavedInstances", "GENERATION_ADVANCE", reportchan)
+  local reportChannel = SI:InGroup()
+  local addonPrefix = "SavedInstances"
+  if reportChannel then
+    if not resetFailed then
+      C_ChatInfo.SendAddonMessage(addonPrefix, "GENERATION_ADVANCE", reportChannel)
     end
     if SI.db.Tooltip.ReportResets then
-      local msg = instancemsg or RESET_INSTANCES
+      local msg = instanceMsg or RESET_INSTANCES
       msg = msg:gsub("\1241.+;.+;","") -- ticket 76, remove |1;; escapes on koKR
-      SendChatMessage("<".."SavedInstances".."> "..msg, reportchan)
+      SendChatMessage("<"..addonPrefix.."> "..msg, reportChannel)
     end
   end
 end
 hooksecurefunc("ResetInstances", doExplicitReset)
 
-local resetmsg = INSTANCE_RESET_SUCCESS:gsub("%%s",".+")
-local resetfails = { INSTANCE_RESET_FAILED, INSTANCE_RESET_FAILED_OFFLINE, INSTANCE_RESET_FAILED_ZONING }
-for k,v in pairs(resetfails) do
-  resetfails[k] = v:gsub("%%s",".+")
+local resetSuccessPattern = INSTANCE_RESET_SUCCESS:gsub("%%s",".+")
+local resetFailPatterns = { 
+  INSTANCE_RESET_FAILED, 
+  INSTANCE_RESET_FAILED_OFFLINE, 
+  INSTANCE_RESET_FAILED_ZONING 
+}
+for idx, pattern in pairs(resetFailPatterns) do
+  resetFailPatterns[idx] = pattern:gsub("%%s",".+")
 end
-local raiddiffmsg = ERR_RAID_DIFFICULTY_CHANGED_S:gsub("%%s",".+")
-local dungdiffmsg = ERR_DUNGEON_DIFFICULTY_CHANGED_S:gsub("%%s",".+")
+local raidDifficultyPattern = ERR_RAID_DIFFICULTY_CHANGED_S:gsub("%%s",".+")
+local dungDifficultyPattern = ERR_DUNGEON_DIFFICULTY_CHANGED_S:gsub("%%s",".+")
 local delaytime = 3 -- seconds to wait on zone change for settings to stabilize
-function SI.HistoryEvent(f, evt, ...)
+
+---@alias HistoryEvent 
+---| "'CHAT_MSG_ADDON'" # for "GENERATION_ADVANCE" addon message.
+---| "'CHAT_MSG_SYSTEM'" # for matching instance reset related chat messages.
+---| "'INSTANCE_BOOT_START'" # countdown to boot a player from an instance starts. 
+---| "'INSTANCE_BOOT_STOP'" # countdown to boot a player from an instance stops.
+---| "'GROUP_ROSTER_UPDATE'" # to track when player acutally leaves the group.
+---| "'PLAYER_ENTERING_WORLD'" # 
+---| "'ZONE_CHANGED_NEW_AREA'" # 
+---| "'RAID_INSTANCE_WELCOME'" # https://warcraft.wiki.gg/wiki/RAID_INSTANCE_WELCOME
+
+--- Handles and parses instance reset related events.
+--- Determines if an instance reset has actually occured and calls `SI:HistoryUpdate` accordingly
+---@param f unknown
+---@param event HistoryEvent
+---@param ... any event args
+function SI.HistoryEvent(f, event, ...)
   -- SI:Debug("HistoryEvent: "..evt, ...)
-  if evt == "CHAT_MSG_ADDON" then
+  if event == "CHAT_MSG_ADDON" then
     local prefix, message, channel, sender = ...
     if prefix ~= "SavedInstances" then return end
-    if message:match("^GENERATION_ADVANCE$") and not UnitIsUnit(sender,"player") then
+    ---@cast sender string
+    -- why use exact string pattern matching instead of equality checking?
+    -- if message:match("^GENERATION_ADVANCE$") and not UnitIsUnit(sender,"player") then
+    if message == "GENERATION_ADVANCE" 
+      -- i think sender is a player name not a unitID
+      -- this check would always resolve to true.
+      and not UnitIsUnit(sender,"player") 
+      -- matches on player "first name" only. could add server match as well
+      and strsplit("-", sender) == UnitName("player")
+    then
       SI:HistoryUpdate(true)
     end
-  elseif evt == "CHAT_MSG_SYSTEM" then
-    local msg = ...
-    if msg:match("^"..resetmsg.."$") then -- I performed expicit reset
-      doExplicitReset(msg)
-    elseif msg:match("^"..INSTANCE_SAVED.."$") then -- just got saved
-      SI:ScheduleTimer("HistoryUpdate", delaytime+1)
-    elseif (msg:match("^"..raiddiffmsg.."$") or msg:match("^"..dungdiffmsg.."$")) and
-      not SI:histZoneKey() then -- ignore difficulty messages when creating a party while inside an instance
+  elseif event == "CHAT_MSG_SYSTEM" then
+    local message = ... ---@type string
+    if message:match("^"..resetSuccessPattern.."$") then -- I performed expicit reset
+      doExplicitReset(message)
+    elseif message:match("^"..INSTANCE_SAVED.."$") then -- just got saved
+      SI:ScheduleTimer("HistoryUpdate", delaytime + 1)
+    elseif (message:match("^"..raidDifficultyPattern.."$") 
+      or message:match("^"..dungDifficultyPattern.."$")) 
+      and not SI:histZoneKey() -- ignore difficulty messages when creating a party while inside an instance
+    then 
       SI:HistoryUpdate(true)
-    elseif msg:match(TRANSFER_ABORT_TOO_MANY_INSTANCES) then
+    elseif message:match(TRANSFER_ABORT_TOO_MANY_INSTANCES) then
       SI:HistoryUpdate(false,true)
     else
-      for _,m in pairs(resetfails) do
-        if msg:match("^"..m.."$") then
-          doExplicitReset(msg, true) -- send failure chat message
+      for _, failPattern in pairs(resetFailPatterns) do
+        if message:match("^"..failPattern.."$") then
+          doExplicitReset(message, true) -- send failure chat message
         end
       end
     end
-  elseif evt == "INSTANCE_BOOT_START" then -- left group inside instance, resets on boot
+  elseif event == "INSTANCE_BOOT_START" then -- left group inside instance, resets on boot
     SI:HistoryUpdate(true)
-  elseif evt == "INSTANCE_BOOT_STOP" and SI:InGroup() then -- invited back
+  elseif event == "INSTANCE_BOOT_STOP" and SI:InGroup() then -- invited back
     SI.delayedReset = false
-  elseif evt == "GROUP_ROSTER_UPDATE" and
-    SI.histInGroup and not SI:InGroup() and -- ignore failed invites when solo
-    not SI:histZoneKey() then -- left group outside instance, resets now
+  elseif event == "GROUP_ROSTER_UPDATE" 
+    and SI.histInGroup and not SI:InGroup() -- ignore failed invites when solo
+    and not SI:histZoneKey() -- left group outside instance, resets now
+  then 
     SI:HistoryUpdate(true)
-  elseif evt == "PLAYER_ENTERING_WORLD" or evt == "ZONE_CHANGED_NEW_AREA" or evt == "RAID_INSTANCE_WELCOME" then
+  elseif event == "PLAYER_ENTERING_WORLD" 
+    or event == "ZONE_CHANGED_NEW_AREA" 
+    or event == "RAID_INSTANCE_WELCOME" 
+  then
     -- delay updates while settings stabilize
     local waittime = delaytime + math.max(0,10 - GetFramerate())
     SI.delayUpdate = time() + waittime
@@ -3428,141 +3495,190 @@ function SI.HistoryEvent(f, evt, ...)
   end
 end
 
-SI.histReapTime = 60*60 -- 1 hour
-SI.histLimit = 10 -- instances per hour. Different for different versions of the game. 
+SI.histReapTime = 60*60 -- 1 hour in seconds. Time it takes for instance limit to reset.
 
---- 
+SI.histLimit = 10 -- instances per hour. 
+-- Different for different versions of the game. 
+-- retai: 10
+-- classic & wotlk: 5
+-- additionaly classic and wrath have a 30 instances per day limit.
+
+--- Detect if players current zone is an instance with lockout info.
+-- Return the instance's histKey, description string, and wether or not the player is locked to the instance. 
+---@return string? histKey string used to index `SI.db.History`. formatted `<toonName>:<instanceName>:<instanceType>:<difficultyID>[:<histGeneration>]`
+---@return string? descString string describing instance. formatted `<toonName>: <instanceName>[ - <difficultyName>]`. Text in brackets IFF instance has a difficulty name.
+---@return boolean? zoneIsLocked
 function SI:histZoneKey()
+  local currentToonName = SI.thisToon
   local instanceName, instanceType, difficultyID, difficultyName, 
     maxPlayers, playerDifficulty, isDynamicInstance = GetInstanceInfo()
 
+  -- pvp instances dont count
   if instanceType == nil 
     or instanceType == "none" 
     or instanceType == "arena" 
     or instanceType == "pvp" 
-  then -- pvp doesnt count
-    return nil
-  end
-  if (IsInLFGDungeon() or IsInScenarioGroup()) and difficultyID ~= 19 and difficultyID ~= 17 then -- LFG instances don't count, but Holiday Events and LFR both count
-    return nil
-  end
+  then return nil end
+  
+  -- LFG instances don't count, 
+  if (IsInLFGDungeon() or IsInScenarioGroup()) 
+  and difficultyID ~= 19 and difficultyID ~= 17  -- but Holiday Events and LFR both count
+  then return nil end
 
-  if C_Garrison and C_Garrison.IsOnGarrisonMap() then 
-    -- Garrisons don't count
-    return nil
-  end
+  -- Garrisons don't count (not in wotlk)
+  if C_Garrison and C_Garrison.IsOnGarrisonMap() 
+  then return nil end
+
   -- check if we're locked (using FindInstance so we don't complain about unsaved unknown instances)
-  local truename = SI:FindInstance(instanceName, instanceType == "raid")
-  local locked = false
-  local inst = truename and SI.db.Instances[truename]
-  inst = inst and inst[SI.thisToon]
-  for d=1,maxDifficultyID do
-    if inst and inst[d] and inst[d].Locked then
-      locked = true
+  local instanceKey = SI:FindInstance(instanceName, instanceType == "raid")
+  local playerIsLocked = false
+
+  local currentInstance = instanceKey and SI.db.Instances[instanceKey] or {}
+  local instanceLockouts = currentInstance[currentToonName] or {}
+  
+  --- check if current toon locked to *any* difficulty.
+  -- (not sure what the purpose of this code is)
+  for _difficultyID = 1, maxDifficultyID do
+    if instanceLockouts[_difficultyID] 
+      and instanceLockouts[_difficultyID].Locked 
+    then
+      playerIsLocked = true
     end
   end
-  if difficultyID == 1 and maxPlayers == 5 then -- never locked to 5-man regs
-    locked = false
+  
+  -- never locked to 5-man regs
+  if difficultyID == 1 and maxPlayers == 5 then 
+    playerIsLocked = false
   end
-  local toonstr = SI.thisToon
+
   if not SI.db.Tooltip.ShowServer then
-    toonstr = strsplit(" - ", toonstr)
+    currentToonName = strsplit(" - ", currentToonName)
   end
-  local desc = toonstr .. ": " .. instanceName
-  if difficultyName and #difficultyName > 0 then
-    desc = desc .. " - " .. difficultyName
+
+  local descString = currentToonName .. ": " .. instanceName
+  if #difficultyName > 0 then
+    descString = descString .. " - " .. difficultyName
   end
-  local key = SI.thisToon..":"..instanceName..":"..instanceType..":"..difficultyID
-  if not locked then
-    key = key..":"..SI.db.histGeneration
+
+  local histKey = SI.thisToon..":"..instanceName..":"..instanceType..":"..difficultyID
+  if not playerIsLocked then
+    histKey = histKey..":"..SI.db.histGeneration
   end
-  return key, desc, locked
+  return histKey, descString, playerIsLocked
 end
 
-function SI:HistoryUpdate(forcereset, forcemesg)
+--- Updates instance history for tracking hourly instance limit (`SI.histLiveCount`).
+--- Inserts, cleans, and counts entries in the `SI.db.History` table.
+---@param forceReset boolean? force a reset of the instance history
+---@param forceMsg boolean? force a chat message to be sent
+function SI:HistoryUpdate(forceReset, forceMsg)
   -- SI.db.histGeneration = SI.db.histGeneration or 1 -- Defualt set on db construction
-  if forcereset and SI:histZoneKey() then -- delay reset until we zone out
-    SI:Debug("HistoryUpdate reset delayed")
+  
+  local now = time()
+  local histKey, zoneDescr, isPlayerLocked = SI:histZoneKey()
+  local isValidInstance = histKey ~= nil
+  local isPlayerZoningIn = false
+
+  if forceReset and isValidInstance then -- delay reset until we zone out
+    SI:Debug("HistoryUpdate: Reset update delayed until the instance is left.")
     SI.delayedReset = true
   end
-  if (forcereset or SI.delayedReset) and not SI:histZoneKey() then
-    SI:Debug("HistoryUpdate generation advance")
+  
+  if (forceReset or SI.delayedReset) and not isValidInstance then
     SI.db.histGeneration = (SI.db.histGeneration + 1) % 100000
+    SI:Debug("HistoryUpdate: Generation increased to %i", SI.db.histGeneration)
     SI.delayedReset = false
   end
-  local now = time()
+
   if SI.delayUpdate and now < SI.delayUpdate then
-    SI:Debug("HistoryUpdate delayed")
+    SI:Debug("HistoryUpdate: Delayed until 'settings stabalize'.")
     return
   end
-  local isZoningIn = false
-  local newZoneName, zoneDesc, zoneIsLocked = SI:histZoneKey()
+  
   -- touch zone we left
   if SI.histLastZone then
-    local lz = SI.db.History[SI.histLastZone]
-    if lz then
-      lz.last = now
+    local lastInstanceHist = SI.db.History[SI.histLastZone --[[@as string]]]
+    if lastInstanceHist then
+      lastInstanceHist.last = now
     end
-  elseif newZoneName then
-    isZoningIn = true
+  elseif histKey then
+    isPlayerZoningIn = true
   end
-  SI.histLastZone = newZoneName
+
+  SI.histLastZone = histKey
   SI.histInGroup = SI:InGroup()
-  -- touch/create new zone
-  if newZoneName then
-    local nz = SI.db.History[newZoneName]
-    if not nz then
-      nz = { create = now, desc = zoneDesc }
-      SI.db.History[newZoneName] = nz
-      if zoneIsLocked then -- creating a locked instance, delete unlocked version
-        SI.db.History[newZoneName..":"..SI.db.histGeneration] = nil
+  
+  -- touch/create new zone history
+  if histKey and zoneDescr then
+    local instanceHistory = SI.db.History[histKey] 
+    if not instanceHistory then
+      instanceHistory = { 
+        create = now,
+        desc = zoneDescr 
+      }
+      if isPlayerLocked then -- creating a locked instance, delete unlocked version
+        SI.db.History[histKey..":"..SI.db.histGeneration] = nil
       end
+      -- add table to index
+      SI.db.History[histKey] = instanceHistory
     end
-    nz.last = now
+    instanceHistory.last = now
   end
+
   -- reap old zones
-  local livecnt = 0
-  local oldestkey, oldesttime
-  for zk, zi in pairs(SI.db.History) do
-    if now > zi.last + SI.histReapTime or
-      zi.last > (now + 3600) then -- temporary bug fix
-      SI:Debug("Reaping %s",zi.desc)
-      SI.db.History[zk] = nil
+  local liveCount = 0
+  local oldestKey, oldestTime
+  for historyKey, history in pairs(SI.db.History) do
+    if now > history.last + SI.histReapTime 
+      or history.last > (now + 3600) -- temporary bug fix 
+    then 
+      SI:Debug("HistoryUpdate: %s instance lockout expired. ", history.desc)
+      SI.db.History[historyKey] = nil
     else
-      livecnt = livecnt + 1
-      if not oldesttime or zi.last < oldesttime then
-        oldestkey = zk
-        oldesttime = zi.last
+      liveCount = liveCount + 1
+      if not oldestTime or history.last < oldestTime then
+        oldestKey = historyKey
+        oldestTime = history.last
       end
     end
   end
-  local oldestrem = oldesttime and (oldesttime+SI.histReapTime-now)
-  local oldestremt = (oldestrem and SecondsToTime(oldestrem,false,false,1)) or "n/a"
-  local oldestremtm = (oldestrem and SecondsToTime(math.floor((oldestrem+59)/60)*60,false,false,1)) or "n/a"
+  local nextExpire = oldestTime and (oldestTime +SI.histReapTime - now)
+  local expirationTimeStr = (nextExpire and SecondsToTime(nextExpire, false, false, 1)) or "n/a"
+  -- local oldestremtm = (nextExpire and SecondsToTime(math.floor((nextExpire+59)/60)*60,false,false,1)) or "n/a"
   if SI.db.dbg then
-    local msg = livecnt.." live instances, oldest ("..(oldestkey or "none")..") expires in "..oldestremt..". Current Zone="..(newZoneName or "nil")
+    local debugStr  = "%i live instances, oldest (%s) expires in %s. Current Zone=%s"
+    msg = debugStr:format(liveCount, oldestKey or "none", expirationTimeStr, histKey or "nil")
+    
     if msg ~= SI.lasthistdbg then
       SI.lasthistdbg = msg
       SI:Debug(msg)
     end
     -- SI:Debug(SI.db.History)
   end
-  -- display update
 
-  if forcemesg or (SI.db.Tooltip.LimitWarn and isZoningIn and livecnt >= SI.histLimit-1) then
-    SI:ChatMsg(L["Warning: You've entered about %i instances recently and are approaching the %i instance per hour limit for your account. More instances should be available in %s."],livecnt, SI.histLimit, oldestremt)
+  -- print update notification (if forced or `LimitWarn`, option set)
+  if forceMsg 
+    or (SI.db.Tooltip.LimitWarn and isPlayerZoningIn and liveCount >= SI.histLimit-1) 
+  then
+    SI:ChatMsg(L["Warning: You've entered about %i instances recently and are approaching the %i instance per hour limit for your account. More instances should be available in %s."],liveCount, SI.histLimit, expirationTimeStr)
   end
-  SI.histLiveCount = livecnt
-  SI.histOldest = oldestremt
-  if currentToonData.Tooltip.HistoryText and livecnt > 0 then
-    SI.dataobject.text = "("..livecnt.."/"..(oldestremt or "?")..")"
-    SI.histTextthrottle = math.min(oldestrem+1, SI.histTextthrottle or 15)
+
+  SI.histLiveCount = liveCount
+  SI.histOldest = expirationTimeStr
+
+  if SI.db.Tooltip.HistoryText and liveCount > 0 then
+    SI.dataobject.text = "("..liveCount.."/"..(expirationTimeStr or "?")..")"
+    SI.histTextthrottle = math.min(nextExpire + 1, SI.histTextthrottle or 15)
     SI.resetDetect:SetScript("OnUpdate", SI.histTextUpdate)
   else
     SI.dataobject.text = "SI"
     SI.resetDetect:SetScript("OnUpdate", nil)
   end
 end
+
+--- function used to manage throttling of the tooltip text updating.
+---@param self SavedInstances.Wrath
+---@param elap number time elapsed since last update
 function SI.histTextUpdate(self, elap)
   SI.histTextthrottle = SI.histTextthrottle - elap
   if SI.histTextthrottle > 0 then return end
@@ -3570,7 +3686,8 @@ function SI.histTextUpdate(self, elap)
   SI:HistoryUpdate()
 end
 
-local function localarr(name) -- save on memory churn by reusing arrays in updates
+--- Save on memory churn by reusing arrays in updates
+local function localarr(name) 
   name = "localarr#"..name
   SI[name] = SI[name] or {}
   return wipe(SI[name])
@@ -3586,140 +3703,186 @@ function SI:memcheck(context)
   end
 end
 
--- Lightweight refresh of just quest flag information
--- all may be nil if not instantiataed
-function SI:QuestRefresh(recoverdaily, nextreset, weeklyreset)
-  local tiq = SI.db.Toons[SI.thisToon]
-  tiq = tiq and tiq.Quests
-  if not tiq then return end
-  nextreset = nextreset or SI:GetNextDailyResetTime()
-  weeklyreset = weeklyreset or SI:GetNextWeeklyResetTime()
-  if not nextreset or not weeklyreset then return end
+--- Lightweight refresh of just quest flag information,
+-- all may be nil if not instantiataed.
+---@param recoverDailies boolean? if `SI:QuestRefresh` should run the dailies recovery logic
+---@param nextDailyReset number? time of next daily reset.
+---@param nextWeeklyReset number? time of next weekly reset.
+function SI:QuestRefresh(recoverDailies, nextDailyReset, nextWeeklyReset)
+  local savedPlayerQuests = SI.db.Toons[SI.thisToon] and SI.db.Toons[SI.thisToon].Quests
+  if not savedPlayerQuests then return end
+  nextDailyReset = nextDailyReset or SI:GetNextDailyResetTime() -- why not do this with the parameter when the function is called?
+  nextWeeklyReset = nextWeeklyReset or SI:GetNextWeeklyResetTime() -- same here
+  
+  if not nextDailyReset or not nextWeeklyReset then return end
 
-  for _, qinfo in pairs(SI:specialQuests()) do
-    local qid = qinfo.quest
-    if C_QuestLog.IsQuestFlaggedCompleted(qid) then
-      local q = tiq[qid] or {}
-      tiq[qid] = q
-      q.Title = qinfo.name
-      q.Zone = qinfo.zone
-      if qinfo.daily then
-        q.Expires = nextreset
-        q.isDaily = true
-      else
-        q.Expires = weeklyreset
-        q.isDaily = nil
-      end
+  for _, specialQuest in pairs(SI:specialQuests()) do
+    local questID = specialQuest.quest
+    if C_QuestLog.IsQuestFlaggedCompleted(questID) then
+      savedPlayerQuests[questID] = {
+          Title = specialQuest.name,
+          Zone = specialQuest.zone,
+          isDaily = specialQuest.daily or nil,
+          Expires = specialQuest.isDaily and nextDailyReset or nextWeeklyReset,
+      }
     end
   end
 
   local now = time()
-  currentToonData.QuestDB.Weekly.expires = weeklyreset
-  currentToonData.QuestDB.AccountWeekly.expires = weeklyreset
-  currentToonData.QuestDB.Darkmoon.expires = SI:GetNextDarkmoonResetTime()
-  for scope, list in pairs(currentToonData.QuestDB) do
-    local questlist = tiq
-    if scope:find("Account") then
-      questlist = currentToonData.Quests
+  SI.db.QuestDB.Weekly.expires = nextWeeklyReset
+  SI.db.QuestDB.AccountWeekly.expires = nextWeeklyReset
+  SI.db.QuestDB.Darkmoon.expires = SI:GetNextDarkmoonResetTime()
+
+  for questType, allTrackedQuests in pairs(SI.db.QuestDB) do
+    local playerOrAccountQuests = savedPlayerQuests
+
+    if questType == "AccountDaily" or questType == "AccountWeekly" then
+      playerOrAccountQuests = SI.db.Quests -- Account Quesets
     end
-    if recoverdaily or (scope ~= "Daily") then
-      for qid, mapid in pairs(list) do
-        if tonumber(qid) and C_QuestLog.IsQuestFlaggedCompleted(qid) and not questlist[qid] and -- recovering a lost quest
-          (list.expires == nil or list.expires > now) then -- don't repop darkmoon quests from last faire
-          local title, link = SI:QuestInfo(qid)
+
+    if recoverDailies or (questType ~= "Daily") then
+      for questID, mapID in pairs(allTrackedQuests) do
+        if C_QuestLog.IsQuestFlaggedCompleted(questID) 
+          and not playerOrAccountQuests[questID] -- recovering a lost quest
+          and (allTrackedQuests.expires == nil or allTrackedQuests.expires > now)  -- don't repop darkmoon quests from last faire
+        then
+          local title, link = SI:QuestInfo(questID)
           if title then
             local found
-            for _,info in pairs(questlist) do
-              if title == info.Title then -- avoid faction duplicates, since both flags are set
+            -- both player and account quest stores are indexed by quest id
+            -- so why not just use the questID instead of iterating the whole table for a name match?
+            for _, quest in pairs(playerOrAccountQuests) do
+              -- avoid faction duplicates, since both flags are set
+              if title == quest.Title then 
                 found = true
                 break
               end
             end
             if not found then
-              SI:Debug("Recovering lost quest: "..title.." ("..scope..")")
-              questlist[qid] = { ["Title"] = title, ["Link"] = link,
-                ["isDaily"] = (scope:find("Daily") and true) or nil,
-                ["Expires"] = list.expires,
-                ["Zone"] = C_Map.GetMapInfo(mapid) }
+              playerOrAccountQuests[questID] = { 
+                Title = title, 
+                Link = link,
+                isDaily = questType:find("Daily") and true or false,
+                Expires = allTrackedQuests.expires,
+                Zone = C_Map.GetMapInfo(mapID) 
+              }
+              SI:Debug("Recovered lost quest: "..title.." ("..questType..")")
             end
           end
         end
       end
     end
   end
+  -- why is this called?
   SI:QuestCount(SI.thisToon)
 end
 
----TODO
----@param recoverdaily boolean? if `SI:QuestRefresh` should run the dailies recovery logic
-function SI:Refresh(recoverdaily)
+--- Performs a variety of tasks in relation to refreshing the addon's database state.
+--- Including but not limited to: `SI.db.Instances`, `SI.db.Toons`, `SI.db.Quests`, `SI.db.History`.
+---@param recoverDailies boolean? if `SI:QuestRefresh` should run the dailies recovery logic
+function SI:Refresh(recoverDailies)
   -- update entire database from the current character's perspective
   SI:UpdateInstanceData()
-  -- flags used to avoid infinite recursion between `SI:Refresh` and `SI:UpdateInstanceData`
+
+  -- flags here are used to avoid infinite recursion between `SI:Refresh` and `SI:UpdateInstanceData`
   -- this system should be reworked.
   if not SI.instancesUpdated then
     SI.RefreshPending = true
     return
   end -- wait for UpdateInstanceData to succeed
 
-  local nextreset = SI:GetNextDailyResetTime()
-  if not nextreset or ((nextreset - time()) > (24*3600 - 5*60)) then  -- allow 5 minutes for quest DB to update after daily rollover
+  local nextDailyReset = SI:GetNextDailyResetTime()
+  if not nextDailyReset 
+  -- allow 5 minutes for quest DB to update after daily rollover
+    or ((nextDailyReset - time()) > (24*3600 - 5*60)) 
+  then  
     SI:Debug("Skipping SI:Refresh() near daily reset")
     SI:UpdateToonData()
     return
   end
+
   local temp = localarr("RefreshTemp")
-  for name, instance in pairs(SI.db.Instances) do -- clear current toons lockouts before refresh
-    local id = instance.LFDID
-    if instance[SI.thisToon]
+  
+  -- clear current toons lockouts before refresh
+  for key, lockouts in pairs(SI.db.Instances) do 
+    local dungeonID = lockouts.LFDID
+    if lockouts[SI.thisToon]
     -- disabled for ticket 178/195:
     --and not (id and SI.LFRInstances[id] and select(2,GetLFGDungeonNumEncounters(id)) == 0) -- ticket 103
     then
-      temp[name] = instance[SI.thisToon] -- use a temp to reduce memory churn
-      for diff,info in pairs(temp[name]) do
-        wipe(info)
+      temp[key] = lockouts[SI.thisToon] -- use a temp to reduce memory churn
+      for diffID, lockoutInfo in pairs(temp[key]) do
+        wipe(lockoutInfo)
       end
-      instance[SI.thisToon] = nil
-    end
-  end
-  local numsaved = GetNumSavedInstances()
-  if numsaved > 0 then
-    for i = 1, numsaved do
-      local name, id, expires, diff, locked, extended, mostsig, raid, players, diffname = GetSavedInstanceInfo(i)
-      local truename, instance = SI:LookupInstance(nil, name, raid)
-      if expires and expires > 0 then
-        expires = expires + time()
-      else
-        expires = 0
-      end
-      instance.Raid = instance.Raid or raid
-      instance[SI.thisToon] = instance[SI.thisToon] or temp[truename] or { }
-      local info = instance[SI.thisToon][diff] or {}
-      wipe(info)
-      info.ID = id
-      info.Expires = expires
-      info.Link = GetSavedInstanceChatLink(i)
-      info.Locked = locked
-      info.Extended = extended
-      instance[SI.thisToon][diff] = info
+      lockouts[SI.thisToon] = nil
     end
   end
 
-  local weeklyreset = SI:GetNextWeeklyResetTime()
-  for id,_ in pairs(SI.LFRInstances) do
-    local numEncounters, numCompleted = GetLFGDungeonNumEncounters(id)
-    if ( numCompleted and numCompleted > 0 and weeklyreset ) then
-      local truename, instance = SI:LookupInstance(id, nil, true)
-      instance[SI.thisToon] = instance[SI.thisToon] or temp[truename] or { }
-      local info = instance[SI.thisToon][2] or {}
-      instance[SI.thisToon][2] = info
-      if not (info.Expires and info.Expires < (time() + 300)) then -- ticket 109: don't refresh expiration close to reset
-        wipe(info)
-        info.Expires = weeklyreset
+  -- repopulate lockout info using `GetSavedInstanceInfo`
+  local numSaved = GetNumSavedInstances()
+  if numSaved > 0 then
+    for i = 1, numSaved do
+      local name, lockoutID, lockoutDuration, diffID, isLocked,
+        isExtended, mostsig, isRaid, players, altName = GetSavedInstanceInfo(i)
+        
+      local resetTimestamp = lockoutDuration and (lockoutDuration + time()) or 0
+      local instanceKey, instanceEntry = SI:LookupInstance(nil, name, isRaid)
+      -- The instance entry could itself be a ref already or a fresh table but that is not reference to the db. i dont like this, id rather nil be returned. and a new entry created on nil.
+
+      -- instanceEntry.Raid = instanceEntry.Raid or isRaid
+      -- -- the table at `temp[instanceKey]` would have been wiped in the earlier loop.
+      -- -- why is it considered here?
+      -- instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or temp[instanceKey] or { }      
+      
+      -- local info = instanceEntry[SI.thisToon][diffID] or {}
+      -- wipe(info)
+      -- info.ID = lockoutID
+      -- info.Expires = lockoutDuration
+      -- info.Link = GetSavedInstanceChatLink(i)
+      -- info.Locked = isLocked
+      -- info.Extended = isExtended
+      -- instanceEntry[SI.thisToon][diffID] = info
+
+      --- alternative
+      if not instanceEntry.lfgDungeonID then -- ie unreferenced empty table returned
+        -- add ref for table in the db
+        SI.db.Instances[instanceKey] = instanceEntry
+        -- now local table can be modified and changes will be reflected in db
+        instanceEntry.Raid = isRaid
       end
+      instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or {}
+      local characterLockouts  = instanceEntry[SI.thisToon]
+      characterLockouts[diffID] = {
+        ID = lockoutID,
+        Expires = lockoutDuration,
+        Link = GetSavedInstanceChatLink(i),
+        Locked = isLocked,
+        Extended = isExtended,
+      }
+    end
+  end
+
+  -- upsert LFR lockout info using `GetLFGDungeonEncounterInfo`
+  local nextWeeklyReset = SI:GetNextWeeklyResetTime()
+  for lfrDungeonID,_ in pairs(SI.LFRInstances) do
+    local numEncounters, numCompleted = GetLFGDungeonNumEncounters(lfrDungeonID)
+    if ( numCompleted and numCompleted > 0 and nextWeeklyReset ) then
+      local lfrInstanceKey, instanceEntry = SI:LookupInstance(lfrDungeonID, nil, true)
+      instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or temp[lfrInstanceKey] or { }
+      -- why use difficultyID of 2 when LFR has its own ID of 17? https://warcraft.wiki.gg/wiki/DifficultyID
+      local info = instanceEntry[SI.thisToon][2] or {}
+      instanceEntry[SI.thisToon][2] = info
+      
+      -- ticket 109: don't refresh expiration close to reset, hardcoded 5 minutes.
+      if not (info.Expires and info.Expires < (time() + 300)) then
+        wipe(info)
+        info.Expires = nextWeeklyReset
+      end
+
       info.ID = -1*numEncounters
+      
       for i=1, numEncounters do
-        local bossName, texture, isKilled = GetLFGDungeonEncounterInfo(id, i)
+        local bossName, texture, isKilled = GetLFGDungeonEncounterInfo(lfrDungeonID, i)
         info[i] = isKilled
       end
     end
@@ -3730,42 +3893,47 @@ function SI:Refresh(recoverdaily)
     for i=1,GetNumSavedWorldBosses() do
       local name, id, reset = GetSavedWorldBossInfo(i)
       wbsave[name] = true
+    end
   end
-  end
-  for _,einfo in pairs(SI.WorldBosses) do
-    if weeklyreset and (
-      (einfo.quest and C_QuestLog.IsQuestFlaggedCompleted(einfo.quest)) or
-      wbsave[einfo.savename or einfo.name]
-      ) then
-      local truename = einfo.name
-      local instance = SI.db.Instances[truename]
-      instance[SI.thisToon] = instance[SI.thisToon] or temp[truename] or { }
+  for _,encounterInfo in pairs(SI.WorldBosses) do
+    if nextWeeklyReset 
+      and ((encounterInfo.quest and C_QuestLog.IsQuestFlaggedCompleted(encounterInfo.quest)) 
+          or wbsave[encounterInfo.savename or encounterInfo.name]) 
+    then
+      local instanceKey = encounterInfo.name
+      local instance = SI.db.Instances[instanceKey]
+      instance[SI.thisToon] = instance[SI.thisToon] or temp[instanceKey] or { }
+      -- use a difficulty id of 2 for wolrd bosses.
       local info = instance[SI.thisToon][2] or {}
       wipe(info)
       instance[SI.thisToon][2] = info
-      info.Expires = weeklyreset
+      info.Expires = nextWeeklyReset
       info.ID = -1
       info[1] = true
     end
   end
 
-  SI:QuestRefresh(recoverdaily, nextreset, weeklyreset)
-  -- Warfront:UpdateQuest()
+  SI:QuestRefresh(recoverDailies, nextDailyReset, nextWeeklyReset)
+  -- Warfront:UpdateQuest() not in wotlk
 
-  local icnt, dcnt = 0,0
-  for name, _ in pairs(temp) do
-    if SI.db.Instances[name][SI.thisToon] then
-      for diff,info in pairs(SI.db.Instances[name][SI.thisToon]) do
-        if not info.ID then
-          SI.db.Instances[name][SI.thisToon][diff] = nil
-          dcnt = dcnt + 1
+  -- not sure what the purpose of the follow code is
+  local numInstances, numDifficulties = 0,0
+  for instanceKey, _ in pairs(temp) do
+    if SI.db.Instances[instanceKey][SI.thisToon] then
+      for diffID, lockout in pairs(SI.db.Instances[instanceKey][SI.thisToon]) do
+        if not lockout.ID then
+          SI.db.Instances[instanceKey][SI.thisToon][diffID] = nil
+          numDifficulties = numDifficulties + 1
         end
       end
     else
-      icnt = icnt + 1
+      numInstances = numInstances + 1
     end
   end
-  -- SI:Debug("Refresh temp reaped "..icnt.." instances and "..dcnt.." diffs")
+  SI:Debug("Refresh Finisheed: "
+    ..numInstances.." instances, and "
+    ..numDifficulties.." difficulties validated."
+  )
   wipe(temp)
   SI:UpdateToonData()
 end
@@ -3812,7 +3980,7 @@ do
   end
 
   cpairs = function(t, usecache)
-    local settings = currentToonData.Tooltip
+    local settings = SI.db.Tooltip
     local realmgroup_key
     local realmgroup_min
     if not usecache then
@@ -3965,6 +4133,7 @@ local function addColumns(columns, toon, tooltip)
 end
 SI.scaleCache = {}
 
+--- The function responsible for generating the addons minimap saved instances tooltip
 function SI:ShowTooltip(anchorframe)
   local showall = ShowAll()
   if Tooltip:IsTooltipShown() and
