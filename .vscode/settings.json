@@ -10,7 +10,7 @@
         "/C:/Program Files (x86)/World of Warcraft/_classic_/WTF/Account/53235073#1/SavedVariables/*": true,
         "/C:/Program Files (x86)/World of Warcraft/_classic_/WTF/Account/53235073#1/SavedVariables/SavedInstances.lua": true
     },
-    "cSpell.enabled": true,
+    "cSpell.enabled": false,
     "Lua.diagnostics.globals": [
         "DUNGEON_DIFFICULTY3",
         "show",

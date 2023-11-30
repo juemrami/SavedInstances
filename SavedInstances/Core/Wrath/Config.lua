@@ -1,4 +1,3 @@
----@diagnostic disable: undefined-field
 ---@class SavedInstances.Wrath : SavedInstances
 local SI, L = unpack((select(2, ...)))
 
@@ -16,8 +15,8 @@ local Warfront = nil
 ---@cast Progress ProgressModule.Wrath
 
 -- Lua functions
-local pairs, ipairs, tonumber, tostring, wipe = pairs, ipairs, tonumber, tostring, wipe
-local unpack, date, tinsert, sort = unpack, date, tinsert, sort
+local pairs, ipairs, tonumber, tostring, wipe, unpack, date, tinsert, sort
+    = pairs, ipairs, tonumber, tostring, wipe, unpack, date, tinsert, sort
 local _G = _G
 
 -- WoW API / Variables
@@ -46,7 +45,6 @@ local RED_FONT_COLOR_CODE = RED_FONT_COLOR_CODE
 
 -- GLOBALS: LibStub, BINDING_NAME_SAVEDINSTANCES, BINDING_HEADER_SAVEDINSTANCES
 local version = 1
-print("update"..version)
 
 -- 
 SI.diff_strings = {

@@ -1,15 +1,15 @@
 local
     ---@type string
     addon, 
-    ---@type {[1]: SavedInstances, [2]: table}
+    ---@type {[1]: SavedInstances, [2]: table<string, string>}
     Engine = ...
- 
----@class SavedInstances : AceAddon
+
+---@class SavedInstances : AceAddon, AceEvent-3.0, AceBucket-3.0, AceTimer-3.0
 local SI = LibStub('AceAddon-3.0'):NewAddon(addon, 'AceEvent-3.0', 'AceTimer-3.0', 'AceBucket-3.0')
 
 
 Engine[1] = SI
-Engine[2] = {}
+Engine[2] = {} -- locale table. 
 _G.SavedInstances = Engine
 
 SI.Libs = {}
@@ -32,5 +32,3 @@ SI.locale = GetLocale()
 SI.questCheckMark = '\124A:UI-LFG-ReadyMark:14:14\124a'
 SI.questTurnin = '\124A:QuestTurnin:14:14\124a'
 SI.questNormal = '\124A:QuestNormal:14:14\124a'
-
----@class SavedInstances.Wrath : SavedInstances
