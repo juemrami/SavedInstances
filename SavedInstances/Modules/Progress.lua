@@ -364,6 +364,11 @@ local presets = {
       local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
       for _, factionID in ipairs(majorFactionIDs) do
         local data = C_MajorFactions.GetMajorFactionData(factionID)
+        local currentRepValue, threshold = C_Reputation.GetFactionParagonInfo(factionID)
+        if currentRepValue and threshold then
+          data.renownReputationEarned = currentRepValue % threshold
+          data.renownLevelThreshold = threshold
+        end
         store[factionID] = data and {data.renownLevel, data.renownReputationEarned, data.renownLevelThreshold}
       end
     end,
@@ -617,6 +622,8 @@ local presets = {
       72647, -- Ohn'ahran Plains
       72648, -- The Azure Span
       72649, -- Thaldraszus
+	  75305, -- Zaralek Cavern
+	  78097, -- Emerald Dream
     },
     reset = 'weekly',
     persists = false,
@@ -761,6 +768,17 @@ local presets = {
     persists = false,
     progress = true,
     onlyOnOrCompleted = false,
+  },
+  -- The Big Dig: Traitor's Rest
+  ['df-the-big-dig-traitors-rest'] = {
+    type = 'single',
+    expansion = 9,
+    index = 22,
+    name = L["The Big Dig: Traitor's Rest"],
+    questID = 79226,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
   },
 }
 
