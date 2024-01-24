@@ -133,22 +133,23 @@ local _specialQuests = {
   [72164] = { lid=201301 }, -- Iridescent Ore
   [72165] = { lid=201301 }, -- Iridescent Ore
   -- Disturbed Dirt / Expedition Scout's Pack
-  [66373] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(2259) }, -- Alchemy
-  [66374] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(2259) }, -- Alchemy
-  [66375] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(45357) }, -- Inscription
-  [66376] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(45357) }, -- Inscription
-  [66377] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(7411) }, -- Enchanting
-  [66378] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(7411) }, -- Enchanting
-  [66379] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(4036) }, -- Engineering
-  [66380] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(4036) }, -- Engineering
-  [66381] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(2018) }, -- Blacksmithing
-  [66382] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(2018) }, -- Blacksmithing
-  [66384] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(2108) }, -- Leatherworking
-  [66385] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(2108) }, -- Leatherworking
-  [66386] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(3908) }, -- Tailoring
-  [66387] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(3908) }, -- Tailoring
-  [66388] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(25229) }, -- Jewelcrafting
-  [66389] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. GetSpellInfo(25229) }, -- Jewelcrafting
+  
+  [66373] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(2259) or "Alchemy") }, -- Alchemy
+  [66374] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(2259) or "Alchemy") }, -- Alchemy
+  [66375] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(45357) or "Inscription") }, -- Inscription
+  [66376] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(45357) or "Inscription") }, -- Inscription
+  [66377] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(7411) or "Enchanting") }, -- Enchanting
+  [66378] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(7411) or "Enchanting") }, -- Enchanting
+  [66379] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(4036) or "Engineering") }, -- Engineering
+  [66380] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(4036) or "Engineering") }, -- Engineering
+  [66381] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(2018) or "Blacksmithing") }, -- Blacksmithing
+  [66382] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(2018) or "Blacksmithing") }, -- Blacksmithing
+  [66384] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(2108) or "Leatherworking") }, -- Leatherworking
+  [66385] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(2108) or "Leatherworking") }, -- Leatherworking
+  [66386] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(3908) or "Tailoring") }, -- Tailoring
+  [66387] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(3908) or "Tailoring") }, -- Tailoring
+  [66388] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(25229) or "Jewelcrafting") }, -- Jewelcrafting
+  [66389] = { name=L["Disturbed Dirt / Expedition Scout's Pack"] .. ' - ' .. (GetSpellInfo(25229) or "Jewelcrafting") }, -- Jewelcrafting
 
   -- Old Vanilla Bosses during Anniversary Event
   [47461] = { daily=true, name=L["Lord Kazzak"] },          -- Lord Kazzak

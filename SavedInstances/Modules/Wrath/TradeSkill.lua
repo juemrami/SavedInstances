@@ -269,8 +269,8 @@ local categoryNames = {
   -- ["legionxmute"] = GetSpellInfo(2259).. ": "..L["Legion Transmute"],
   -- ["dragonflightxmute"] = GetSpellInfo(2259).. ": "..L["Dragonflight Transmute"],
   -- ["dragonflightexper"] = GetSpellInfo(2259).. ": "..L["Dragonflight Experimentation"],
-  ["facet"] = GetSpellInfo(25229)..": "..L["Facets of Research"],
-  ["sphere"] = GetSpellInfo(7411).. ": "..GetSpellInfo(28027),
+  ["facet"] = (GetSpellInfo(25229) or "Faceting")..": "..L["Facets of Research"],
+  ["sphere"] = GetSpellInfo(7411).. ": "..(GetSpellInfo(28027) or "Prismatic Sphere"),
   -- ["magni"] = GetSpellInfo(2108).. ": "..GetSpellInfo(140040)
 }
 
