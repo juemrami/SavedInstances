@@ -34,7 +34,12 @@ function SI:TimeDebug()
   local calender = C_DateAndTime_GetCurrentCalendarTime()
   SI:ChatMsg("C_DateAndTime.GetCurrentCalendarTime: %s/%s/%s server", calender.year, calender.month, calender.monthDay)
   SI:ChatMsg("GetQuestResetTime: %s", SecondsToTime(GetQuestResetTime()))
-  SI:ChatMsg(date("Daily reset: %Y/%m/%d %H:%M:%S local (based on GetQuestResetTime)", time() + GetQuestResetTime()))
+  SI:ChatMsg(
+    date(
+      "Daily reset: %Y/%m/%d %H:%M:%S local (based on GetQuestResetTime)", 
+      time() + GetQuestResetTime()
+    ) --[[@as string]]
+  )
 
   local offset = SI:GetServerOffset()
   SI:ChatMsg("Local to server offset: %d hours", offset)

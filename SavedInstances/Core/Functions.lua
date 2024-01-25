@@ -1,24 +1,41 @@
+---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
 
 -- Lua functions
-local _G = _G
 local format, strmatch, strupper = format, strmatch, strupper
 
 -- WoW API / Variables
 local C_Map_GetBestMapForUnit = C_Map.GetBestMapForUnit
-local C_UnitAuras_GetPlayerAuraBySpellID = C_UnitAuras.GetPlayerAuraBySpellID
+-- C_UnitAuras not in WotLK client
+local C_UnitAuras_GetPlayerAuraBySpellID = C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID 
+-- Use `GetSpellInfo` and `AuraUtil.FindAuraByName` as an alternative 
+local GetSpellInfo = GetSpellInfo
+local AuraUtil_FindAuraByName = AuraUtil and AuraUtil.FindAuraByName 
 local GetCurrentRegion = GetCurrentRegion
 local GetCVar = GetCVar
 local GetTime = GetTime
 
+--- Get the expiration time of a player aura by spell ID.
+---@param spellID number
+---@return number? expirationTime Time the aura expires compared to GetTime()
 function SI:GetPlayerAuraExpirationTime(spellID)
-  local info = C_UnitAuras_GetPlayerAuraBySpellID(spellID)
-  return info and info.expirationTime
+  if C_UnitAuras_GetPlayerAuraBySpellID then
+    local info = C_UnitAuras_GetPlayerAuraBySpellID(spellID)
+    return info and info.expirationTime
+  elseif AuraUtil_FindAuraByName then -- alternative
+    local name = GetSpellInfo(spellID)
+    if name then
+      local _, _, _, _, _, expirationTime = AuraUtil_FindAuraByName(name, 'player')
+      return expirationTime
+    end
+  end
 end
 
--- Chat Message and Bug Report Reminder
-function SI:ChatMsg(...)
-  _G.DEFAULT_CHAT_FRAME:AddMessage('|cFFFF0000SavedInstances|r: ' .. format(...))
+--- Adds a message to chat prefixed with the addon name.
+---@param str string
+---@param ... any format arguments, if any, for the string 
+function SI:ChatMsg(str, ...)
+  DEFAULT_CHAT_FRAME:AddMessage('|cFFFF0000SavedInstances|r: ' .. format(str, ...))
 end
 
 do
@@ -66,12 +83,14 @@ function SI:GetCurrentMapAreaID()
   return C_Map_GetBestMapForUnit('player')
 end
 
+--- Wraps given text in a color string based on the class of the given toon.
+--- if not text given uses the toon name.
 function SI:ClassColorString(toon, str)
   if not str then
     str = toon
   end
 
-  local class = SI.db.Toons[toon] and SI.db.Toons[toon].class
+  local class = SI.db.Toons[toon] and SI.db.Toons[toon].Class
   if not class then
     return str
   end
@@ -93,7 +112,9 @@ function SI:ClassColorString(toon, str)
   )
 end
 
+---@param toon string
 function SI:ClassColorToon(toon)
-  local str = (SI.db.Tooltip.ShowServer and toon) or strsplit(' ', toon)
+  local str = SI.db.Tooltip.ShowServer and toon 
+    or strsplit(' ', toon) --remove server name
   return SI:ClassColorString(toon, str)
 end
