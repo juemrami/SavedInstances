@@ -14,6 +14,7 @@ local GetItemInfo = GetItemInfo
 local GetSpellInfo = GetSpellInfo
 local LOOT = LOOT
 
+-- List of quest overrides for special cases. 
 local _specialQuests = {
   -- Isle of Thunder
   [32610] = { zid=504, lid=94221 }, -- Shan'ze Ritual Stone looted
@@ -158,52 +159,60 @@ local _specialQuests = {
   [60214] = { daily=true, name=L["Doomwalker"] },           -- Doomwalker
 }
 
-function SI:specialQuests()
-  for qid, qinfo in pairs(_specialQuests) do
-    qinfo.quest = qid
-
+--- Iterates over the specialQuests overides and fills out corresponding entries with localized `name` and `zone` info.
+---@return {[number]: {quest: number, name: string?, daily: boolean?, zone: UiMapDetails?}} # validated specialQuests table
+function SI:ValidateAndGetSpecialQuests()
+  for questID, qinfo in pairs(_specialQuests) do
+    qinfo.quest = questID
+    -- if no name but we have and item id, try to get the name from the item 
     if not qinfo.name and (qinfo.lid or qinfo.lid1) then
       local itemname, itemlink = GetItemInfo(qinfo.lid or qinfo.lid1)
       if itemlink and qinfo.lid then
         qinfo.name = itemlink.." ("..LOOT..")"
       elseif itemname and qinfo.lid1 then
+        -- only 1 entry uses lid1, seems to be a workaround for a shared quest from multiple items
         local name = itemname:match("^[^%s]+")
         if name and #name > 0 then
           qinfo.name = name.." ("..LOOT..")"
         end
       end
+    -- if no name and we have an achievement + criteria id, try to get the name from the achievement
     elseif not qinfo.name and qinfo.aid and qinfo.acid 
       and C_AchievementInfo.IsValidAchievement(qinfo.aid) 
     then
-      print("SI:specialQuests", qid, qinfo.aid, qinfo.acid)
-      local l = GetAchievementCriteriaInfo(qinfo.aid, qinfo.acid)
-      if l then
-        qinfo.name = l:gsub("%p$","")
+      -- print("SI:specialQuests", qID, qinfo.aid, qinfo.acid)
+      local criteriaName = GetAchievementCriteriaInfo(qinfo.aid, qinfo.acid)
+      if criteriaName then
+        qinfo.name = criteriaName:gsub("%p$","")
       end
+    -- if no name but ahcievement id only, try to get name
     elseif not qinfo.name and qinfo.aid then
       SI.ScanTooltip:SetOwner(_G.UIParent, 'ANCHOR_NONE')
-      -- following member function is not in the wotlk client
-      if SI.ScanTooltip.SetAchievementByID then
+      if not (SI.isClassicEra or SI.isWrath) then
+        -- following member function is not in the wotlk/era client
         SI.ScanTooltip:SetAchievementByID(qinfo.aid)
       end
       SI.ScanTooltip:Show()
-      local l = _G[SI.ScanTooltip:GetName().."Text"..(qinfo.aline or "Left1")]
-      l = l and l:GetText()
-      if l then
-        qinfo.name = l:gsub("%p$","")
+      -- use either speicified or first line of tooltip text
+      local targetLine = _G[SI.ScanTooltip:GetName().."Text"..(qinfo.aline or "Left1")]
+      targetLine = targetLine and targetLine:GetText()
+      if targetLine then
+        qinfo.name = targetLine:gsub("%p$","")
       end
+    -- if no name but spell id
     elseif not qinfo.name and qinfo.sid then
       qinfo.name = GetSpellInfo(qinfo.sid)
     end
+    -- if still no name or name is empty string, fallback to quest id info
     if not qinfo.name or #qinfo.name == 0 then
-      local title, link = SI:QuestInfo(qid)
+      local title, link = SI:QuestInfo(questID)
       if title then
         title = title:gsub("%p?%s*[Tt]racking%s*[Qq]uest","")
         title = strtrim(title)
         qinfo.name = title
       end
     end
-
+    -- if no zone table but we have a zone id, try to get the zone name
     if not qinfo.zone and qinfo.zid then
       qinfo.zone = C_Map_GetMapInfo(qinfo.zid)
     end
@@ -212,6 +221,7 @@ function SI:specialQuests()
   return _specialQuests
 end
 
+---Quest which have different repeat cooldown than the API suggests.
 local QuestExceptions = {
   -- Expansion
   -- MoP

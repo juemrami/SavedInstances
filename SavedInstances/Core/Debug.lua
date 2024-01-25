@@ -1,3 +1,4 @@
+---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
 
 -- Lua functions
@@ -21,6 +22,7 @@ function SI:Debug(...)
   end
 end
 
+
 function SI:TimeDebug()
   SI:ChatMsg("Version: %s", SI.version)
   SI:ChatMsg("Realm: %s (%s)", GetRealmName(), SI:GetRegion())
@@ -29,37 +31,37 @@ function SI:TimeDebug()
   SI:ChatMsg("Local time: %s local", date("%Y/%m/%d %H:%M:%S"))
   SI:ChatMsg("GetGameTime: %s:%s server", GetGameTime())
 
-  local t = C_DateAndTime_GetCurrentCalendarTime()
-  SI:ChatMsg("C_DateAndTime.GetCurrentCalendarTime: %s/%s/%s server", t.year, t.month, t.monthDay)
+  local calender = C_DateAndTime_GetCurrentCalendarTime()
+  SI:ChatMsg("C_DateAndTime.GetCurrentCalendarTime: %s/%s/%s server", calender.year, calender.month, calender.monthDay)
   SI:ChatMsg("GetQuestResetTime: %s", SecondsToTime(GetQuestResetTime()))
   SI:ChatMsg(date("Daily reset: %Y/%m/%d %H:%M:%S local (based on GetQuestResetTime)", time() + GetQuestResetTime()))
 
   local offset = SI:GetServerOffset()
   SI:ChatMsg("Local to server offset: %d hours", offset)
   offset = offset * 60 * 60 -- offset in seconds
-
-  t = SI:GetNextDailyResetTime()
+  local time
+  time = SI:GetNextDailyResetTime()
   SI:ChatMsg(
     "Next daily reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", t), date("%Y/%m/%d %H:%M:%S", t + offset)
+    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 
-  t = SI:GetNextWeeklyResetTime()
+  time = SI:GetNextWeeklyResetTime()
   SI:ChatMsg(
     "Next weekly reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", t), date("%Y/%m/%d %H:%M:%S", t + offset)
+    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 
-  t = SI:GetNextDailySkillResetTime()
+  time = SI:GetNextDailySkillResetTime()
   SI:ChatMsg(
     "Next skill reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", t), date("%Y/%m/%d %H:%M:%S", t + offset)
+    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 
-  t = SI:GetNextDarkmoonResetTime()
+  time = SI:GetNextDarkmoonResetTime()
   SI:ChatMsg(
     "Next Darkmoon reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", t), date("%Y/%m/%d %H:%M:%S", t + offset)
+    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 end
 

@@ -1,4 +1,4 @@
----@class SavedInstances.Wrath : SavedInstances
+---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
 
 ---@class ConfigModule.Wrath : AceModule

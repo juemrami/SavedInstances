@@ -1,4 +1,4 @@
----@class SavedInstances.Wrath : SavedInstances, Frame
+---@class SavedInstances: Frame
 ---@field validCurrencies number[]
 ---@field private lastrefreshlocksched number?
 ---@field private PlayedTime number? Last time `Toon.PlayedLevel` and `Toon.PlayedTotal` were updated. Unix timestamp.
@@ -35,7 +35,11 @@ local table, math, bit, string, pairs, ipairs, unpack, strsplit, time, type, wip
 local GetSavedInstanceInfo, GetNumSavedInstances, GetSavedInstanceChatLink, GetLFGDungeonNumEncounters, GetLFGDungeonEncounterInfo, GetNumRandomDungeons, GetLFGRandomDungeonInfo, GetLFGDungeonInfo, GetLFGDungeonRewards, GetTime, UnitIsUnit, GetInstanceInfo, IsInInstance, SecondsToTime, GetNumGroupMembers, UnitAura =
   GetSavedInstanceInfo, GetNumSavedInstances, GetSavedInstanceChatLink, GetLFGDungeonNumEncounters, GetLFGDungeonEncounterInfo, GetNumRandomDungeons, GetLFGRandomDungeonInfo, GetLFGDungeonInfo, GetLFGDungeonRewards, GetTime, UnitIsUnit, GetInstanceInfo, IsInInstance, SecondsToTime, GetNumGroupMembers, UnitAura
 
--- Wotlk compatibility for missing API functionality. 
+
+local C_QuestLog_GetTitleForQuestID = C_QuestLog.GetTitleForQuestID 
+  or C_QuestLog.GetQuestInfo -- wotkl/era function equivalent
+
+-- compatibility for missing Spec API functionality. 
 local GetNumSpecializations = GetNumSpecializations
 local GetSpecializationInfo = GetSpecializationInfo
 local GetSpecializationInfoForSpecID = GetSpecializationInfoForSpecID
@@ -88,9 +92,14 @@ local Currency = SI:GetModule('Currency')
 ---@cast TradeSkill TradeSkillModule.Wrath
 ---@cast Currency CurrencyModule
 
--- local Calling = SI:GetModule('Calling')
--- local MythicPlus = SI:GetModule('MythicPlus')
--- local Warfront = SI:GetModule('Warfront')
+local Calling  ---@type AceModule?
+local MythicPlus ---@type AceModule?
+local Warfront ---@type AceModule?
+if SI.isRetail then
+  Calling = SI:GetModule('Calling')
+  MythicPlus = SI:GetModule('MythicPlus')
+  Warfront = SI:GetModule('Warfront')
+end
 
 SI.Indicators = {
   ICON_STAR = ICON_LIST[1] .. "16:16:0:0|t",
@@ -109,28 +118,17 @@ SI.IndicatorIconTextures = SI.Indicators
 
 SI.Categories = {}
 
--- Empty these tables as they're not needed for WotLK, 
--- alternatively could removed the unused code entirely
-SI.LFRInstances = {}
+-- Empty these tables as they're not needed for WotLK/Era, 
+-- alternatively could add conditions wherever the table is accessed
+-- this tables should be nil as theyre generated in files that are not specified to load in the TOC
+-- for non retail versions of the addon
+if not SI.isRetail then
+  SI.LFRInstances = {}
 
----@type {[number]: {eid: number?, name: string, expansion: number?, holiday: boolean?, random: boolean?, remove: boolean?, level: number?, lfdid: number?, quest: number?, savename: string? }}
-SI.WorldBosses = {} 
-SI.Emissaries = {}
+  ---@type {[number]: {eid: number?, name: string, expansion: number?, holiday: boolean?, random: boolean?, remove: boolean?, level: number?, lfdid: number?, quest: number?, savename: string? }}
+  SI.WorldBosses = {} 
 
-local GetNumSpecializations = GetNumSpecializations
-local GetSpecializationInfo = GetSpecializationInfo
-local GetSpecializationInfoForSpecID = GetSpecializationInfoForSpecID
---- Wotlk API Compatability
-if not (GetNumSpecializations 
-  and GetSpecializationInfo 
-  and GetSpecializationInfoForSpecID) 
-then
-  GetNumSpecializations = GetNumTalentTabs
-  GetSpecializationInfo = function(idx) return idx end
-  GetSpecializationInfoForSpecID = function(idx)
-    local name = GetTalentTabInfo(idx)
-    return nil, name
-  end
+  SI.Emissaries = {}
 end
 
 local maxExpansion
@@ -146,13 +144,14 @@ for i = 0, EXPANSION_LEVEL do
   end
 end
 
----Scrape and return the quest name and link from the hyperlink tooltip produced for given questID
+---Scrape and return the quest Title and hyperlink tooltip produced for given questID
 ---@param questID number
 ---@return string? name The quest name
 ---@return string? link `quest` type Hyperlink. 
 function SI:QuestInfo(questID)
   if questID == 0 then return end
-  local questName = ""
+  local questName = C_QuestLog_GetTitleForQuestID(questID)
+  if (not questName) or (questName == "") then return end
   local linkTemplate = "\124cffffff00\124Hquest:%s:90\124h[%s]\124h\124r"
   local getQuestLink = function() 
     return linkTemplate:format(questID, questName)
@@ -239,7 +238,7 @@ end
 ---@field Title string
 ---@field Link string? In-game hyperlink.
 ---@field Zone UiMapDetails
----@field isDaily boolean
+---@field isDaily boolean? `true` if the quest is a daily reset quest.
 ---@field Expires number? For weekly or monthly quest expirations dates.
 ----@field type? "daily"|"weekly" 
 
@@ -532,7 +531,7 @@ SI.defaultDB = {
       -- }
     --}
   },
-  ---@class SavedInstances.Wrath.IndicatorFormatters
+  ---@enum SavedInstances.IndicatorFormatters
   Indicators = {
     D1Indicator = "BLANK", -- indicator: ICON_*, BLANK
     D1Text = "KILLED/TOTAL",
@@ -1656,6 +1655,7 @@ end
 --- run regularly to update lockouts and cached data for *this* toon
 function SI:UpdateToonData()
   local nextDailyReset = SI:GetNextDailyResetTime()
+  local currentTimestamp = time() 
 
   -- blizz internally conflates all the holiday flags
   SI.activeHolidays = SI.activeHolidays and wipe(SI.activeHolidays) or {}
@@ -1747,16 +1747,16 @@ function SI:UpdateToonData()
   end
 
   local currentToonData = SI.db.Toons[SI.thisToon]
-  local now = time() 
+  
   
   -- The following should probably be done in a hookscript on `RequestTimePlayed()`
   -- and the function should be called whenever a refresh is required. 
   if SI.logout or SI.PlayedTime or SI.playedpending then
     if SI.PlayedTime then
-      local additionalTime = now - SI.PlayedTime
+      local additionalTime = currentTimestamp - SI.PlayedTime
       currentToonData.PlayedTotal = currentToonData.PlayedTotal + additionalTime
       currentToonData.PlayedLevel = currentToonData.PlayedLevel + additionalTime
-      SI.PlayedTime = now
+      SI.PlayedTime = currentTimestamp
     end
   else
     SI.playedpending = true
@@ -1786,9 +1786,9 @@ function SI:UpdateToonData()
   
   -- clean up stale timer states for ALL toons 
   for toon, toonData in pairs(SI.db.Toons) do
-    if toonData.LFG1 and (toonData.LFG1 < now) then toonData.LFG1 = nil end
-    if toonData.LFG2 and (toonData.LFG2 < now) then toonData.LFG2 = nil end
-    if toonData.pvpdesert and (toonData.pvpdesert < now) then toonData.pvpdesert = nil end
+    if toonData.LFG1 and (toonData.LFG1 < currentTimestamp) then toonData.LFG1 = nil end
+    if toonData.LFG2 and (toonData.LFG2 < currentTimestamp) then toonData.LFG2 = nil end
+    if toonData.pvpdesert and (toonData.pvpdesert < currentTimestamp) then toonData.pvpdesert = nil end
 
     -- this table should be created when the toonData for this toon is initialzied instead. 
     -- toonData.Quests = toonData.Quests or {}
@@ -1805,29 +1805,33 @@ function SI:UpdateToonData()
   if pvpItemLevel and tonumber(pvpItemLevel) > 0 then
     currentToonData.ILPvp = tonumber(pvpItemLevel)
   end
-
-  -- Not sure what reason for parsing, what should be a base 10 number, into a base 10 number is. 
-  -- Keep it assuming its related to some bug. 
-  currentToonData.Arena2v2rating = tonumber(GetPersonalRatedInfo(1) --[[@as string]], 10) or currentToonData.Arena2v2rating
-  currentToonData.Arena3v3rating = tonumber(GetPersonalRatedInfo(2) --[[@as string]], 10) or currentToonData.Arena3v3rating
-  -- t.RBGrating = tonumber(GetPersonalRatedInfo(4), 10) or t.RBGrating
-
+  if not SI.isClassicEra then
+    -- Not sure what reason for parsing, what should be a base 10 number, into a base 10 number is. 
+    -- Keep it assuming its related to some bug. 
+    currentToonData.Arena2v2rating = GetPersonalRatedInfo(1) or currentToonData.Arena2v2rating
+    currentToonData.Arena3v3rating = GetPersonalRatedInfo(2) or currentToonData.Arena3v3rating
+    if SI.isRetail then
+      currentToonData.RBGrating = GetPersonalRatedInfo(4) or currentToonData.RBGrating
+    end
+  end
   currentToonData.SpecializationIDs = currentToonData.SpecializationIDs or {}
   for i = 1, GetNumSpecializations() do
     currentToonData.SpecializationIDs[i] = GetSpecializationInfo(i) or currentToonData.SpecializationIDs[i]
   end
 
-  -- Solo Shuffle rating is unique to each specialization
-  -- t.SoloShuffleRating = t.SoloShuffleRating or {}
-  -- local currentSpecID = GetSpecialization()
-  -- if currentSpecID then
-  --   t.SoloShuffleRating[currentSpecID] = GetPersonalRatedInfo(7) or t.SoloShuffleRating[currentSpecID]
-  -- end
+  if SI.isRetail then
+    -- Solo Shuffle rating is unique to each specialization
+    currentToonData.SoloShuffleRating = currentToonData.SoloShuffleRating or {}
+    local currentSpecID = GetSpecialization()
+    if currentSpecID then
+      currentToonData.SoloShuffleRating[currentSpecID] = GetPersonalRatedInfo(7) or currentToonData.SoloShuffleRating[currentSpecID]
+    end
+  end
 
   TradeSkill:ScanItemCDs()
 
   -- On Daily Reset
-  if nextDailyReset and nextDailyReset > now then
+  if nextDailyReset and nextDailyReset > currentTimestamp then
     for name, toonData in pairs(SI.db.Toons) do
       if not toonData.DailyResetTime or (toonData.DailyResetTime < time()) then
         for id,qi in pairs(toonData.Quests) do
@@ -1839,7 +1843,7 @@ function SI:UpdateToonData()
         toonData.DailyResetTime = (toonData.DailyResetTime and toonData.DailyResetTime + 24*3600) or nextDailyReset
       end
     end
-    -- Calling:OnDailyReset() -- not in Wrath
+    if SI.isRetail and Calling then Calling:OnDailyReset() end
     currentToonData.DailyResetTime = nextDailyReset
     if not currentToonData.DailyResetTime or (currentToonData.DailyResetTime < time()) then -- AccountDaily reset
       for id, quest in pairs(currentToonData.Quests) do
@@ -1877,12 +1881,11 @@ function SI:UpdateToonData()
     end
   end
 
-  -- Weekly Reset
-  -- nextDailyReset = SI:GetNextWeeklyResetTime() -- very confusing
+  -- Weekly Resets
   local nextWeeklyReset = SI:GetNextWeeklyResetTime()
-  if nextWeeklyReset > time() then
+  if nextWeeklyReset > currentTimestamp then
     for toonName, toonData in pairs(SI.db.Toons) do
-      if not toonData.WeeklyResetTime or (toonData.WeeklyResetTime < time()) then
+      if not toonData.WeeklyResetTime or (toonData.WeeklyResetTime < currentTimestamp ) then
         -- toonData.currency = toonData.currency or {} -- defined on init
         for _, currencyID in ipairs(SI.validCurrencies) do
           local currency = toonData.currency[currencyID]
@@ -1898,19 +1901,20 @@ function SI:UpdateToonData()
     currentToonData.WeeklyResetTime = nextWeeklyReset
   end
 
-  -- Skill Reset
+  -- Skill Resets
   for toon, toonData in pairs(SI.db.Toons) do
     if toonData.Skills then
       for spellID, spellInfo in pairs(toonData.Skills) do
-        if spellInfo.Expires and spellInfo.Expires < now then
+        if spellInfo.Expires and spellInfo.Expires < currentTimestamp then
           toonData.Skills[spellID] = nil
         end
       end
     end
   end
+  -- Quest Resets for all toons
   for toon, toonData in pairs(SI.db.Toons) do
     for id,quest in pairs(toonData.Quests) do
-      if not quest.isDaily and (quest.Expires or 0) < now then
+      if not quest.isDaily and (quest.Expires or 0) < currentTimestamp then
         toonData.Quests[id] = nil
       end
       if QuestExceptions[id] == "Regular" then -- adjust exceptions
@@ -1918,18 +1922,21 @@ function SI:UpdateToonData()
       end
     end
   end
+  -- Mythic+ Keystone weekly reset for all toons
   for toon, toonData in pairs(SI.db.Toons) do
-    if toonData.MythicKey and (toonData.MythicKey.ResetTime or 0) < now then
+    if toonData.MythicKey and (toonData.MythicKey.ResetTime or 0) < currentTimestamp then
       toonData.MythicKey = {}
     end
   end
+  -- Timeworn Mythic+ Keystone weekly reset for all toons
   for toon, toonData in pairs(SI.db.Toons) do
-    if toonData.TimewornMythicKey and (toonData.TimewornMythicKey.ResetTime or 0) < now then
+    if toonData.TimewornMythicKey and (toonData.TimewornMythicKey.ResetTime or 0) < currentTimestamp then
       toonData.TimewornMythicKey = {}
     end
   end
+  -- Mythic+ weekly best reset for all toons
   for toon, toonData in pairs(SI.db.Toons) do
-    if toonData.MythicKeyBest and (toonData.MythicKeyBest.ResetTime or 0) < now then
+    if toonData.MythicKeyBest and (toonData.MythicKeyBest.ResetTime or 0) < currentTimestamp then
       toonData.MythicKeyBest.rewardWaiting = toonData.MythicKeyBest.lastCompletedIndex and toonData.MythicKeyBest.lastCompletedIndex > 0
       toonData.MythicKeyBest[1] = nil
       toonData.MythicKeyBest[2] = nil
@@ -1939,12 +1946,13 @@ function SI:UpdateToonData()
       toonData.MythicKeyBest.ResetTime = SI:GetNextWeeklyResetTime()
     end
   end
+  -- Quest resets for *current* toon
   for id, quest in pairs(currentToonData.Quests) do -- AccountWeekly reset
-    if not quest.isDaily and (quest.Expires or 0) < now then
+    if not quest.isDaily and (quest.Expires or 0) < currentTimestamp then
       currentToonData.Quests[id] = nil
     end
   end
-  
+
   -- Calling:PostRefresh()
 
   Currency:UpdateCurrency()
@@ -1979,7 +1987,7 @@ function SI:UpdateToonData()
     currentToonData.MythicPlusScore = C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore()
   end
 
-  currentToonData.LastSeen = now
+  currentToonData.LastSeen = currentTimestamp
 end
 
 function SI:QuestIsDarkmoonMonthly()
@@ -1996,12 +2004,15 @@ function SI:QuestIsDarkmoonMonthly()
   return false
 end
 
-
+local wrathWeeklies
+local sodWeeklies
+-- The `QuestIsWeekly` API function is not in the WoTLK/Era client (yet)
+-- luckily theres only a limited amount of weeklies so this is a viable workaround
 local QuestIsWeekly = QuestIsWeekly or function()
   local id = GetQuestID()
-    -- The `QuestIsWeekly` API function is not in the WoTLK client (yet)
-    -- luckily theres only a limited amount of weeklies so this is a viable workaround
-    local wrathWeeklies = {
+  if not id then return end -- i think `GetQuestID()` will return 0 instead of nil 
+  if SI.isWrath then
+    wrathWeeklies = wrathWeeklies or {
       [24579] = true, -- Sartharion Must Die!
       [24580] = true, -- Anub'Rekhan Must Die!
       [24581] = true, -- Noth the Plaguebringer Must Die!
@@ -2028,9 +2039,15 @@ local QuestIsWeekly = QuestIsWeekly or function()
       [24878] = true, -- Residue Rendezvous (25)
       [24874] = true, -- Blood Quickening (10)
       [24879] = true, -- Blood Quickening (25)
-    
     }
-    return id and wrathWeeklies[id]
+    return wrathWeeklies[id] or false
+  elseif SI.isSoD then 
+    sodWeeklies = sodWeeklies or {
+      [79090] = true, -- Repelling Invaders
+      [79098] = true -- Clear the Forest
+    }
+    return sodWeeklies[id] or false
+  end
 end
 
 --- Parses the recently turned-in quest and updates the `SI.db` accordingly with the quest .
@@ -2209,19 +2226,20 @@ hoverTooltip.ShowToonTooltip = function (cell, arg, ...)
 end
 
 hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
-  local toonFullName, cnt, isDaily = unpack(arg)
-  local qStr = cnt.." "..(isDaily and L["Daily Quests"] or L["Weekly Quests"])
-  local t = SI.db
+  local toonFullName, questCount, isDaily = unpack(arg)
+  local displayStr = questCount.." "..(isDaily and L["Daily Quests"] or L["Weekly Quests"])
+  ---@type SavedInstances.Wrath.Toon | SavedInstances.Wrath.DB
+  local targetDB = SI.db
   local scopeStr = L["Account"]
   local reset
   if toonFullName then
-    t = SI.db.Toons[toonFullName]
-    if not t then return end
-    scopeStr = ClassColorise(t.Class, toonFullName)
-    reset = (isDaily and t.DailyResetTime) or (not isDaily and t.WeeklyResetTime)
+    targetDB = SI.db.Toons[toonFullName]
+    if not targetDB then return end
+    scopeStr = ClassColorise(targetDB.Class, toonFullName)
+    reset = (isDaily and targetDB.DailyResetTime) or (not isDaily and targetDB.WeeklyResetTime)
   end
   local indicatortip = Tooltip:AcquireIndicatorTip(2, "LEFT","RIGHT")
-  indicatortip:AddHeader(scopeStr, qStr)
+  indicatortip:AddHeader(scopeStr, displayStr)
   if not reset then
     reset = (isDaily and SI:GetNextDailyResetTime()) or (not isDaily and SI:GetNextWeeklyResetTime())
   end
@@ -2231,7 +2249,7 @@ hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
   end
   local ql = {}
   local zonename, id
-  for id,qi in pairs(t.Quests) do
+  for id,qi in pairs(targetDB.Quests) do
     if (not isDaily) == (not qi.isDaily) then
       if not SI:QuestIgnored(id) then
         zonename = qi.Zone and qi.Zone.name or ""
@@ -2243,7 +2261,7 @@ hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
   for _,e in ipairs(ql) do
     zonename, id = e:match("(.*) # (%d+)")
     id = tonumber(id)
-    local qi = t.Quests[id]
+    local qi = targetDB.Quests[id]
     local line = indicatortip:AddLine()
     local link = qi.Link
     if not link then -- sometimes missing the actual link due to races, fake it for display to prevent confusion
@@ -2740,7 +2758,7 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
       end
     end
     SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
-    print(link)
+    -- print(link)
     -- SI.ScanTooltip:SetHyperlink(link)
     SI.ScanTooltip:Show()
     local name = SI.ScanTooltip:GetName()
@@ -3065,10 +3083,12 @@ elseif SavedInstancesDB.DBVersion < 12 then
   -- its so minisculy more cost effective not having to index into `SI` everytime we want a referenced to `SI.db`, 
   -- but makes it makes the code alot harder to read/maintain.
   SI.db.History = SI.db.History or {}
-  -- SI.db.Emissary = SI.db.Emissary or SI.defaultDB.Emissary -- Unused in WotLK
   SI.db.Quests = SI.db.Quests or SI.defaultDB.Quests
   SI.db.QuestDB = SI.db.QuestDB or SI.defaultDB.QuestDB
-  -- SI.db.Warfront = SI.db.Warfront or SI.defaultDB.Warfront -- Unused in WotLK
+  if SI.isRetail then
+    SI.db.Emissary = SI.db.Emissary or SI.defaultDB.Emissary
+    SI.db.Warfront = SI.db.Warfront or SI.defaultDB.Warfront
+  end
   
   for tooltipSetting, defaultVal in pairs(SI.defaultDB.Tooltip) do
     if SI.db.Tooltip[tooltipSetting] == nil then
@@ -3227,7 +3247,7 @@ function SI:OnEnable()
   SI.resetDetect:SetScript("OnEvent", SI.HistoryEvent)
   C_ChatInfo.RegisterAddonMessagePrefix("SavedInstances")
   SI:HistoryEvent("PLAYER_ENTERING_WORLD") -- update after initial load
-  SI:specialQuests()
+  SI:ValidateAndGetSpecialQuests()
   SI:updateRealmMap()
 end
 
@@ -3518,12 +3538,14 @@ function SI.HistoryEvent(f, event, ...)
   end
 end
 
-SI.histReapTime = 60*60 -- 1 hour in seconds. Time it takes for instance limit to reset.
+-- Time it takes for instance limit to reset.
+SI.histReapTime = 60*60 -- 1 hour in seconds. 
 
-SI.histLimit = 10 -- instances per hour. 
+-- Instances limit per "histReapTime". 
 -- Different for different versions of the game. 
--- retai: 10
+-- retail: 10
 -- classic & wotlk: 5
+SI.histLimit = SI.isRetail and 10 or 5
 -- additionaly classic and wrath have a 30 instances per day limit.
 
 --- Detect if players current zone is an instance with lockout info.
@@ -3739,14 +3761,14 @@ function SI:QuestRefresh(recoverDailies, nextDailyReset, nextWeeklyReset)
   
   if not nextDailyReset or not nextWeeklyReset then return end
 
-  for _, specialQuest in pairs(SI:specialQuests()) do
+  for _, specialQuest in pairs(SI:ValidateAndGetSpecialQuests()) do
     local questID = specialQuest.quest
     if C_QuestLog.IsQuestFlaggedCompleted(questID) then
       savedPlayerQuests[questID] = {
           Title = specialQuest.name,
           Zone = specialQuest.zone,
           isDaily = specialQuest.daily or nil,
-          Expires = specialQuest.isDaily and nextDailyReset or nextWeeklyReset,
+          Expires = specialQuest.daily and nextDailyReset or nextWeeklyReset,
       }
     end
   end
@@ -3940,7 +3962,7 @@ function SI:Refresh(recoverDailies)
   end
 
   SI:QuestRefresh(recoverDailies, nextDailyReset, nextWeeklyReset)
-  -- Warfront:UpdateQuest() not in wotlk
+  if SI.isRetail and Warfront then Warfront:UpdateQuest() end -- not in wotlk
 
   -- not sure what the purpose of the follow code is
   local numInstances, numDifficulties = 0,0
@@ -4163,7 +4185,9 @@ local function OpenLFR(self, instanceid, button)
 end
 
 local function ReportKeys(self, index, button)
-  MythicPlus:Keys(index)
+  if SI.isRetail and MythicPlus then 
+    MythicPlus:Keys(index)
+  end
 end
 
 local function OpenCurrency(self, _, button)
@@ -4632,15 +4656,16 @@ function SI:ShowTooltip(anchorframe)
       tooltip:AddLine(YELLOWFONT .. L["Quest progresses"] .. FONTEND)
     end
   end)
-
-  -- Warfront:ShowTooltip(tooltip, columns, showall, function()
-  --   if SI.db.Tooltip.CategorySpaces then
-  --     addsep()
-  --   end
-  --   if SI.db.Tooltip.ShowCategories then
-  --     tooltip:AddLine(YELLOWFONT .. L["Warfronts"] .. FONTEND)
-  --   end
-  -- end)
+  if SI.isRetail then
+    Warfront:ShowTooltip(tooltip, columns, showall, function()
+      if SI.db.Tooltip.CategorySpaces then
+        addsep()
+      end
+      if SI.db.Tooltip.ShowCategories then
+        tooltip:AddLine(YELLOWFONT .. L["Warfronts"] .. FONTEND)
+      end
+    end)
+  end
 
   if SI.db.Tooltip.TrackSkills or showall then
     ---@type boolean|number

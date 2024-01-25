@@ -22,9 +22,9 @@ Locales\Locale.lua
 
 # core files
 Core\Wrath\Functions.lua
-Core\Wrath\Time.lua
+Core\Time.lua
 Core\Wrath\Tooltip.lua
-Core\Wrath\Debug.lua
+Core\Debug.lua
 
 # modules
 # load Quest.lua first, required by Currency.lua
