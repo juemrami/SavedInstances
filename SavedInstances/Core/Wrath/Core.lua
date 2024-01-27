@@ -87,7 +87,7 @@ local Progress = SI:GetModule('Progress')
 local TradeSkill = SI:GetModule('TradeSkill')
 local Currency = SI:GetModule('Currency')
 ---@cast Config ConfigModule.Wrath
----@cast Tooltip TooltipModule.Wrath
+---@cast Tooltip TooltipModule
 ---@cast Progress ProgressModule.Wrath
 ---@cast TradeSkill TradeSkillModule.Wrath
 ---@cast Currency CurrencyModule
@@ -1465,7 +1465,7 @@ function SI:UpdateInstanceData()
     end
   end
 
-  Config:BuildOptions() -- refresh config table
+  Config:BuildAceConfigOptions() -- refresh config table
 
   local elapsedTime = debugprofilestop() - profilingStart
   SI:Debug("UpdateInstanceData(): completed in %.3f ms : %d added, %d renames, %d merges, %d conflicts.",

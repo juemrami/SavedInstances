@@ -1,6 +1,6 @@
 ---@type SavedInstances
 local SI, L = unpack(select(2, ...))
----@class TooltipModule.Wrath : AceModule , AceEvent-3.0
+---@class TooltipModule : AceModule , AceEvent-3.0
 local Module = SI:NewModule('Tooltip', 'AceEvent-3.0')
 local QTip = SI.Libs.QTip
 

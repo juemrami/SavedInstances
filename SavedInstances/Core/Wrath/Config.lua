@@ -2,15 +2,13 @@
 local SI, L = unpack((select(2, ...)))
 
 ---@class ConfigModule.Wrath : AceModule
----@field private blizzardSettingsCategoryID string?
----@field private blizzardSettingsCharacterElementID string?
 local Config = SI:NewModule('Config')
 
 local Tooltip = SI:GetModule('Tooltip')
 local Currency = SI:GetModule('Currency')
 local Progress = SI:GetModule('Progress')
-local Warfront = nil
----@cast Tooltip TooltipModule.Wrath
+local Warfront = SI.isRetail and SI:GetModule('Warfront') or nil
+---@cast Tooltip TooltipModule
 ---@cast Currency CurrencyModule
 ---@cast Progress ProgressModule.Wrath
 
@@ -70,7 +68,7 @@ local GOLDFONT = NORMAL_FONT_COLOR_CODE
 -- config global functions
 
 function Config:OnInitialize()
-  Config:SetupOptions()
+  Config:RegisterAddonSettingsPanel()
 end
 
 BINDING_NAME_SAVEDINSTANCES = L["Show/Hide the SavedInstances tooltip"]
@@ -102,13 +100,6 @@ function SI:idtext(instance,diff,info)
   end
 end
 
-local function TableLen(table)
-  local i = 0
-  for _, _ in pairs(table) do
-    i = i + 1
-  end
-  return i
-end
 --- Builds and returns the options table for the "Indicators" sub-section SavedInstances options.
 ---@return table<string, AceConfig.OptionsTable> args A table of valid AceConfig `args` for the option table.
 local function GetIndicatorOptions()
@@ -177,11 +168,14 @@ local function GetIndicatorOptions()
   end
   return args
 end
---- Build the addon's option table and set in `SI.Options`. Used by AceConfig to generate the addon's settings panel in the blizzard settings frame. 
+-----------------------------------------------------------------------
+---@type AceConfig.OptionsTable
+local savedOptions = {}
+--- Build the addon's option table used by AceConfig to generate the addon's settings panel in the blizzard settings frame. 
 --- See [AceConfig3 options tables](https://www.wowace.com/projects/ace3/pages/ace-config-3-0-options-tables) for more info.
-function Config:BuildOptions()
+---@return AceConfig.OptionsTable options
+function Config:BuildAceConfigOptions()
   ---@type AceConfig.OptionsTable
-  SI.Options = SI.Options or {} -- allow option table rebuild
   local valuesList = { 
     ["always"] = GREEN_FONT_COLOR_CODE..L["Always show"]..FONTEND,
     ["saved"] = L["Show when saved"],
@@ -914,88 +908,91 @@ function Config:BuildOptions()
       Progress = Progress:BuildOptions(2),
     },
   }
-  -- Insert built options into SI.Options
+  -- Insert built options into the "cache"
+  -- (im not sure what the point of this is, it was in the original code but i see no purpose for it)
   for k,v in pairs(options) do
-    SI.Options[k] = v
+    savedOptions[k] = v
   end
 
-  if Warfront then
+  if SI.isRetail then
+    ---@diagnostic disable-next-line: undefined-field
     local warfront = Warfront:BuildOptions(34)
     for k, v in pairs(warfront) do
-      SI.Options.args.General.args[k] = v
+      savedOptions.args.General.args[k] = v
     end
-  end
-  if SI.Emissaries then 
     for expansion, _ in pairs(SI.Emissaries) do
-      SI.Options.args.General.args["Emissary" .. expansion] = {
+      savedOptions.args.General.args["Emissary" .. expansion] = {
         type = "toggle",
         order = 37 + expansion * 0.1,
         name = _G["EXPANSION_NAME" .. expansion],
       }
-    end
+    end  
   end
-  local headerOffset = SI.Options.args.Currency.args.CurrencyHeader.order
-
+  
+  local headerOffset = savedOptions.args.Currency.args.CurrencyHeader.order
   for idx, currencyID in ipairs(SI.validCurrencies) do 
     local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
     local name = Currency.OverrideName[currencyID] or data.name
     ---@type string | number
     local tex = Currency.OverrideTexture[currencyID] or data.iconFileID
     tex = "\124T"..tex..":0\124t "
-    SI.Options.args.Currency.args["Currency"..currencyID] = {
+    savedOptions.args.Currency.args["Currency"..currencyID] = {
       type = "toggle",
       order = headerOffset+idx,
       name = tex..name,
     }
   end
+  return savedOptions
 end
 
 -- global functions
+-----------------------------------------------------------------------
+-- Setup settings panel and util functions
+---@type string?, string|number?
+local addonSettingsCategoryID, characterSettingsElementID
+function Config:RegisterAddonSettingsPanel()
+  local namespace = ADDON_NAME
+  local addonOptions = Config:BuildAceConfigOptions()
+  
+  ---@type AceConfig-3.0
+  local AceConfig = LibStub("AceConfig-3.0")
+  AceConfig:RegisterOptionsTable(namespace, addonOptions, { "si", "savedinstances" })
 
-local configFrameName, configCharactersFrameName
+  ---@type AceConfigDialog-3.0
+  local AceDialog = LibStub("AceConfigDialog-3.0")
+  
+  local _ = nil;
+  _, addonSettingsCategoryID = AceDialog:AddToBlizOptions(namespace, nil, nil, "General")
+  AceDialog:AddToBlizOptions(namespace, L["Quest progresses"], namespace, "Progress")
+  AceDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency")
+  AceDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators")
+  AceDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances")
+  _, charactersFrameElementID = AceDialog
+          :AddToBlizOptions(namespace, L["Characters"], namespace, "Characters")
+end
 function Config:ReopenConfigDisplay(frame)
-  if not Config.blizzardSettingsCategoryID then
-    Config:SetupOptions()
-  end
+  assert(addonSettingsCategoryID, 
+    "Config:ReopenConfigDisplay: `addonSettingsCategoryID` is `nil`. Addon settings not registered?"
+  )
   if _G.SettingsPanel:IsShown() then
     HideUIPanel(_G.SettingsPanel)
-    Settings_OpenToCategory(Config.blizzardSettingsCategoryID)
+    Settings_OpenToCategory(addonSettingsCategoryID)
     -- Settings.OpenToCategory(frame)
     -- Not possible due to lack of WoW feature
   end
 end
 
 function Config:ShowConfig()
+  assert(addonSettingsCategoryID, 
+    "Config:ShowConfig: `addonSettingsCategoryID` is `nil`. Addon settings not registered?"
+  )
   if _G.SettingsPanel:IsShown() then
     HideUIPanel(_G.SettingsPanel)
   else
-    Settings_OpenToCategory(Config.blizzardSettingsCategoryID)
+    Settings_OpenToCategory(addonSettingsCategoryID)
   end
 end
 
-function Config:SetupOptions()
-  Config:BuildOptions()
-
-  local namespace = ADDON_NAME
-  ---@type AceConfig-3.0
-  local AceConfig = LibStub("AceConfig-3.0")
-  AceConfig:RegisterOptionsTable(namespace, SI.Options, { "si", "savedinstances" })
-
-  ---@type AceConfigDialog-3.0
-  local AceConfigDialog = LibStub("AceConfigDialog-3.0")
-
-  local _, settingsCategoryName = AceConfigDialog:AddToBlizOptions(namespace, nil, nil, "General")
-  AceConfigDialog:AddToBlizOptions(namespace, L["Quest progresses"], namespace, "Progress")
-  AceConfigDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency")
-  AceConfigDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators")
-  AceConfigDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances")
-  local _, charactersFrameName = AceConfigDialog:AddToBlizOptions(namespace, L["Characters"], namespace, "Characters")
-
-  configFrameName = settingsCategoryName
-  configCharactersFrameName = charactersFrameName
-  Config.blizzardSettingsCategoryID = settingsCategoryName
-  Config.blizzardSettingsCharacterElementID = charactersFrameName
-end
 
 local function ResetConfirmed()
   SI:Debug("Resetting characters")
@@ -1010,8 +1007,8 @@ local function ResetConfirmed()
   SI.PlayedTime = nil -- reset played cache
   SI:toonInit() -- rebuild SI.thisToon
   SI:Refresh()
-  Config:BuildOptions() -- refresh config table
-  Config:ReopenConfigDisplay(configCharactersFrameName)
+  Config:BuildAceConfigOptions() -- refresh config table
+  Config:ReopenConfigDisplay(characterSettingsElementID)
 end
 
 local function DeleteCharacter(toon)
@@ -1026,8 +1023,8 @@ local function DeleteCharacter(toon)
     i[toon] = nil
   end
   SI.db.Toons[toon] = nil
-  Config:BuildOptions() -- refresh config table
-  Config:ReopenConfigDisplay(Config.blizzardSettingsCharacterElementID)
+  Config:BuildAceConfigOptions() -- refresh config table
+  Config:ReopenConfigDisplay(characterSettingsElementID)
 end
 
 StaticPopupDialogs["SAVEDINSTANCES_RESET"] = {

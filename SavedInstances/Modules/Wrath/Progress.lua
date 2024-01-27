@@ -5,7 +5,7 @@ local SI, L = unpack((select(2, ...)))
 local Module = SI:NewModule('Progress', 'AceEvent-3.0')
 
 local Tooltip = SI:GetModule('Tooltip')
----@cast Tooltip TooltipModule.Wrath
+---@cast Tooltip TooltipModule
 
 ---Returns `true` if left *should* precede right.
 ---@alias CompareFunc fun(left: table, right: table): boolean

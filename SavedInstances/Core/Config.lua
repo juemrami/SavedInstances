@@ -1,13 +1,20 @@
+---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
+
+---@class ConfigModule.Wrath : AceModule
 local Config = SI:NewModule('Config')
+
 local Tooltip = SI:GetModule('Tooltip')
 local Currency = SI:GetModule('Currency')
 local Progress = SI:GetModule('Progress')
-local Warfront = SI:GetModule('Warfront')
+local Warfront = SI.isRetail and SI:GetModule('Warfront') or nil
+---@cast Tooltip TooltipModule
+---@cast Currency CurrencyModule
+---@cast Progress ProgressModule.Wrath
 
 -- Lua functions
-local pairs, ipairs, tonumber, tostring, wipe = pairs, ipairs, tonumber, tostring, wipe
-local unpack, date, tinsert, sort = unpack, date, tinsert, sort
+local pairs, ipairs, tonumber, tostring, wipe, unpack, date, tinsert, sort
+    = pairs, ipairs, tonumber, tostring, wipe, unpack, date, tinsert, sort
 local _G = _G
 
 -- WoW API / Variables
@@ -18,8 +25,10 @@ local GetRealmName = GetRealmName
 local SaveBindings = SaveBindings
 local SetBinding = SetBinding
 
+
 local HideUIPanel = HideUIPanel
 local Settings_OpenToCategory = Settings.OpenToCategory
+local ADDON_NAME = "SavedInstances"
 local StaticPopup_Show = StaticPopup_Show
 
 local ALL = ALL
@@ -33,21 +42,25 @@ local LEVEL = LEVEL
 local RED_FONT_COLOR_CODE = RED_FONT_COLOR_CODE
 
 -- GLOBALS: LibStub, BINDING_NAME_SAVEDINSTANCES, BINDING_HEADER_SAVEDINSTANCES
+local version = 1
 
+-- 
 SI.diff_strings = {
   D1 = DUNGEON_DIFFICULTY1, -- 5 man
   D2 = DUNGEON_DIFFICULTY2, -- 5 man (Heroic)
-  D3 = DUNGEON_DIFFICULTY1.." ("..GetDifficultyInfo(23)..")", -- 5 man (Mythic)
   R0 = EXPANSION_NAME0 .. " " .. LFG_TYPE_RAID,
-  R1 = RAID_DIFFICULTY1, -- "10 man"
+  R1 = RAID_DIFFICULTY1, -- "10 man" 
   R2 = RAID_DIFFICULTY2, -- "25 man"
   R3 = RAID_DIFFICULTY3, -- "10 man (Heroic)"
   R4 = RAID_DIFFICULTY4, -- "25 man (Heroic)"
+  -- https://warcraft.wiki.gg/wiki/DifficultyID
   R5 = GetDifficultyInfo(7), -- "Looking for Raid"
   R6 = GetDifficultyInfo(14), -- "Normal raid"
   R7 = GetDifficultyInfo(15), -- "Heroic raid"
   R8 = GetDifficultyInfo(16), -- "Mythic raid"
 }
+
+SI.difficultyStrings = SI.diff_strings 
 
 local FONTEND = FONT_COLOR_CODE_CLOSE
 local GOLDFONT = NORMAL_FONT_COLOR_CODE
@@ -55,7 +68,7 @@ local GOLDFONT = NORMAL_FONT_COLOR_CODE
 -- config global functions
 
 function Config:OnInitialize()
-  Config:SetupOptions()
+  Config:RegisterAddonSettingsPanel()
 end
 
 BINDING_NAME_SAVEDINSTANCES = L["Show/Hide the SavedInstances tooltip"]
@@ -87,15 +100,10 @@ function SI:idtext(instance,diff,info)
   end
 end
 
-local function TableLen(table)
-  local i = 0
-  for _, _ in pairs(table) do
-    i = i + 1
-  end
-  return i
-end
-
-local function IndicatorOptions()
+--- Builds and returns the options table for the "Indicators" sub-section SavedInstances options.
+---@return table<string, AceConfig.OptionsTable> args A table of valid AceConfig `args` for the option table.
+local function GetIndicatorOptions()
+  ---@type table<string, AceConfig.OptionsTable>
   local args = {
     Instructions = {
       order = 1,
@@ -103,35 +111,39 @@ local function IndicatorOptions()
       name = L["You can combine icons and text in a single indicator if you wish. Simply choose an icon, and insert the word ICON into the text field. Anywhere the word ICON is found, the icon you chose will be substituted in."].." "..L["Similarly, the words KILLED and TOTAL will be substituted with the number of bosses killed and total in the lockout."],
     },
   }
-  for diffname, diffstr in pairs(SI.diff_strings) do
-    local dorder = (tonumber(diffname:match("%d+")) or 0) + 10
-    if diffname:find("^R") then dorder = dorder + 10 end
-    args[diffname] = {
+  for difficultyID, difficultyString in pairs(SI.difficultyStrings) do
+    local order = (tonumber(difficultyID:match("%d+")) or 0) + 10
+    --- Position raid difficulties after dungeon difficulties
+    if difficultyID:find("^R") then 
+      order = order + 10
+    end
+
+    args[difficultyID] = {
       type = "group",
-      name = diffstr,
-      order = dorder,
+      name = difficultyString,
+      order = order,
       args = {
-        [diffname.."Indicator"] = {
+        [difficultyID.."Indicator"] = {
           order = 1,
           type = "select",
           width = "half",
           name = EMBLEM_SYMBOL,
-          values = SI.Indicators
+          values = SI.IndicatorIconTextures
         },
-        [diffname.."Text"] = {
+        [difficultyID.."Text"] = {
           order = 2,
           type = "input",
           name = L["Text"],
           multiline = false
         },
-        [diffname.."Color"] = {
+        [difficultyID.."Color"] = {
           order = 3,
           type = "color",
           width = "half",
           hasAlpha = false,
           name = COLOR,
           disabled = function()
-            return SI.db.Indicators[diffname .. "ClassColor"]
+            return SI.db.Indicators[difficultyID .. "ClassColor"]
           end,
           get = function(info)
             SI.db.Indicators[info[#info]] = SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
@@ -146,7 +158,7 @@ local function IndicatorOptions()
             SI.db.Indicators[info[#info]][3] = b
           end,
         },
-        [diffname.."ClassColor"] = {
+        [difficultyID.."ClassColor"] = {
           order = 4,
           type = "toggle",
           name = L["Use class color"]
@@ -156,14 +168,21 @@ local function IndicatorOptions()
   end
   return args
 end
-
--- options table below
-function Config:BuildOptions()
-  local valueslist = { ["always"] = GREEN_FONT_COLOR_CODE..L["Always show"]..FONTEND,
+-----------------------------------------------------------------------
+---@type AceConfig.OptionsTable
+local savedOptions = {}
+--- Build the addon's option table used by AceConfig to generate the addon's settings panel in the blizzard settings frame. 
+--- See [AceConfig3 options tables](https://www.wowace.com/projects/ace3/pages/ace-config-3-0-options-tables) for more info.
+---@return AceConfig.OptionsTable options
+function Config:BuildAceConfigOptions()
+  ---@type AceConfig.OptionsTable
+  local valuesList = { 
+    ["always"] = GREEN_FONT_COLOR_CODE..L["Always show"]..FONTEND,
     ["saved"] = L["Show when saved"],
     ["never"] = RED_FONT_COLOR_CODE..L["Never show"]..FONTEND,
   }
-  local opts = {
+  ---@class AceConfig.OptionsTable
+  local options = {
     type = "group",
     name = "SavedInstances",
     handler = SI,
@@ -177,6 +196,7 @@ function Config:BuildOptions()
       wipe(SI.oi_cache)
       SI.oc_cache = nil
     end,
+    --use info[#info] to get the leaf node name
     args = {
       config = {
         name = L["Open config"],
@@ -259,6 +279,8 @@ function Config:BuildOptions()
             type = "toggle",
             name = L["Abbreviate keystones"],
             desc = L["Abbreviate Mythic keystone dungeon names"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,  
             order = 4.85
           },
           KeystoneReportTarget = {
@@ -269,6 +291,8 @@ function Config:BuildOptions()
               ["GUILD"] = L["Guild"],
               ["EXPORT"] = L["Export"]
             },
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
             order = 4.86
           },
           DebugMode = {
@@ -276,7 +300,6 @@ function Config:BuildOptions()
             name = L["Debug Mode"],
             order = 4.9,
           },
-
           CategoriesHeader = {
             order = 11,
             type = "header",
@@ -388,34 +411,46 @@ function Config:BuildOptions()
             name = L["Combine LFR"],
             desc = L["Combine LFR"],
             order = 23.95,
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           WarfrontHeader = {
             order = 33,
             type = "header",
             name = L["Warfronts"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           EmissaryHeader = {
             order = 36,
             type = "header",
             name = L["Emissary quests"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           EmissaryFullName = {
             type = "toggle",
             order = 39.1,
             name = L["Show all emissary names"],
             desc = L["Show both factions' emissay name"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           EmissaryShowCompleted = {
             type = "toggle",
             order = 39.2,
             name = L["Show when completed"],
             desc = L["Show emissary line when all quests completed"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           CombineEmissary = {
             type = "toggle",
             order = 39.3,
             name = L["Combine Emissaries"],
             desc = L["Combine emissaries of same expansion"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           MiscHeader = {
             order = 40,
@@ -441,17 +476,23 @@ function Config:BuildOptions()
             type = "toggle",
             order = 43.8,
             name = L["Bonus rolls"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           AugmentBonus = {
             type = "toggle",
             order = 43.9,
             name = L["Bonus loot frame"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           TrackLFG = {
             type = "toggle",
             order = 44,
             name = L["LFG cooldown"],
             desc = L["Show cooldown for characters to use LFG dungeon system"],
+            disabled = SI.isClassicEra,
+            hidden = SI.isClassicEra,
           },
           TrackDeserter = {
             type = "toggle",
@@ -469,39 +510,53 @@ function Config:BuildOptions()
             order = 47,
             name = L["Mythic Keystone"],
             desc = L["Track Mythic keystone acquisition"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           TimewornMythicKey = {
             type = "toggle",
             order = 47.1,
             name = L["Timeworn Mythic Keystone"],
             desc = L["Track Timeworn Mythic keystone acquisition"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           MythicKeyBest = {
             type = "toggle",
             order = 47.5,
             name = L["Mythic Best"],
             desc = L["Track Mythic keystone best run"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           TrackParagon = {
             type = "toggle",
             order = 48,
             name = L["Paragon Chests"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           Calling = {
             type = "toggle",
             order = 49,
             name = CALLINGS_QUESTS,
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           CallingShowCompleted = {
             type = "toggle",
             order = 49.1,
             name = L["Show when completed"],
             desc = L["Show calling line when all quests completed"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           CombineCalling = {
             type = "toggle",
             order = 49.2,
             name = L["Combine Callings"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
           },
           BindHeader = {
             order = -0.6,
@@ -574,22 +629,23 @@ function Config:BuildOptions()
           },
         },
       },
-      Indicators = {
+      Indicators = { 
         order = 4,
         type = "group",
         name = L["Indicators"],
         get = function(info)
-          if SI.db.Indicators[info[#info]] ~= nil then -- tri-state boolean logic
-            return SI.db.Indicators[info[#info]]
-          else
-            return SI.defaultDB.Indicators[info[#info]]
-          end
+          -- if SI.db.Indicators[info[#info]] ~= nil then -- tri-state boolean logic
+          --   return SI.db.Indicators[info[#info]]
+          -- else
+          --   return SI.defaultDB.Indicators[info[#info]]
+          -- end
+          return SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
         end,
         set = function(info, value)
           SI:Debug("Config set: "..info[#info].." = "..(value and "true" or "false"))
           SI.db.Indicators[info[#info]] = value
         end,
-        args = IndicatorOptions(),
+        args = GetIndicatorOptions(),
       },
       Instances = {
         order = 5,
@@ -598,37 +654,37 @@ function Config:BuildOptions()
         childGroups = "select",
         width = "double",
         args = (function()
-          local ret = {}
-          for i,cat in ipairs(SI.OrderedCategories()) do
-            ret[cat] = {
-              order = i,
+          local instancesArgs = {}
+          for idx, category in ipairs(SI:OrderedCategories()) do
+            instancesArgs[category] = {
+              order = idx,
               type = "group",
-              name = SI.Categories[cat],
+              name = SI.Categories[category],
               childGroups = "tree",
               args = (function()
-                local iret = {}
-                local insts = SI:OrderedInstances(cat)
+                local instanceCategoryArgs = {}
+                local insts = SI:OrderedInstances(category)
                 for j, inst in ipairs(insts) do
-                  iret[inst] = {
+                  instanceCategoryArgs[inst] = {
                     order = j,
                     name = inst,
                     type = "select",
                     -- style = "radio",
-                    values = valueslist,
+                    values = valuesList,
                     get = function(info)
                       local val = SI.db.Instances[inst].Show
-                      return (val and valueslist[val] and val) or "saved"
+                      return (val and valuesList[val] and val) or "saved"
                     end,
                     set = function(info, value)
                       SI.db.Instances[inst].Show = value
                     end,
                   }
                 end
-                iret[ALL] = {
+                instanceCategoryArgs[ALL] = {
                   order = 0,
                   name = L["Set All"],
                   type = "select",
-                  values = valueslist,
+                  values = valuesList,
                   get = function(info) return "" end,
                   set = function(info, value)
                     for j, inst in ipairs(insts) do
@@ -636,18 +692,18 @@ function Config:BuildOptions()
                     end
                   end,
                 }
-                iret.spacer = {
+                instanceCategoryArgs.spacer = {
                   order = 0.5,
                   name = "",
                   type = "description",
                   width = "full",
                   cmdHidden = true,
                 }
-                return iret
+                return instanceCategoryArgs
               end)(),
             }
           end
-          return ret
+          return instancesArgs
         end)(),
       },
       Characters = {
@@ -833,7 +889,7 @@ function Config:BuildOptions()
                         name = "",
                         type = "select",
                         width = "normal",
-                        values = valueslist,
+                        values = valuesList,
                         arg = t,
                         get = toonget("Show", "saved"),
                         set = toonset("Show"),
@@ -885,75 +941,94 @@ function Config:BuildOptions()
           },
         },
       },
+      Progress = Progress:BuildOptions(2),
     },
   }
-  SI.Options = SI.Options or {} -- allow option table rebuild
-  for k,v in pairs(opts) do
-    SI.Options[k] = v
+  -- Insert built options into the "cache"
+  -- (im not sure what the point of this is, it was in the original code but i see no purpose for it)
+  for k,v in pairs(options) do
+    savedOptions[k] = v
   end
-  SI.Options.args.Progress = Progress:BuildOptions(2)
-  local warfront = Warfront:BuildOptions(34)
-  for k, v in pairs(warfront) do
-    SI.Options.args.General.args[k] = v
+
+  if SI.isRetail then
+    ---@diagnostic disable-next-line: undefined-field
+    local warfront = Warfront:BuildOptions(34)
+    for k, v in pairs(warfront) do
+      savedOptions.args.General.args[k] = v
+    end
+    for expansion, _ in pairs(SI.Emissaries) do
+      savedOptions.args.General.args["Emissary" .. expansion] = {
+        type = "toggle",
+        order = 37 + expansion * 0.1,
+        name = _G["EXPANSION_NAME" .. expansion],
+      }
+    end  
   end
-  for expansion, _ in pairs(SI.Emissaries) do
-    SI.Options.args.General.args["Emissary" .. expansion] = {
-      type = "toggle",
-      order = 37 + expansion * 0.1,
-      name = _G["EXPANSION_NAME" .. expansion],
-    }
-  end
-  local hdroffset = SI.Options.args.Currency.args.CurrencyHeader.order
-  for i, curr in ipairs(SI.currency) do
-    local data = C_CurrencyInfo_GetCurrencyInfo(curr)
-    local name = Currency.OverrideName[curr] or data.name
-    local tex = Currency.OverrideTexture[curr] or data.iconFileID
+  
+  local headerOffset = savedOptions.args.Currency.args.CurrencyHeader.order
+  for idx, currencyID in ipairs(SI.validCurrencies) do 
+    local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
+    local name = Currency.OverrideName[currencyID] or data.name
+    ---@type string | number
+    local tex = Currency.OverrideTexture[currencyID] or data.iconFileID
     tex = "\124T"..tex..":0\124t "
-    SI.Options.args.Currency.args["Currency"..curr] = {
+    savedOptions.args.Currency.args["Currency"..currencyID] = {
       type = "toggle",
-      order = hdroffset+i,
+      order = headerOffset+idx,
       name = tex..name,
     }
   end
+  return savedOptions
 end
 
 -- global functions
+-----------------------------------------------------------------------
+-- Setup settings panel and util functions
+---@type string?, string|number?
+local addonSettingsCategoryID, characterSettingsElementID
+function Config:RegisterAddonSettingsPanel()
+  local namespace = ADDON_NAME
+  local addonOptions = Config:BuildAceConfigOptions()
+  
+  ---@type AceConfig-3.0
+  local AceConfig = LibStub("AceConfig-3.0")
+  AceConfig:RegisterOptionsTable(namespace, addonOptions, { "si", "savedinstances" })
 
-local configFrameName, configCharactersFrameName
+  ---@type AceConfigDialog-3.0
+  local AceDialog = LibStub("AceConfigDialog-3.0")
+  
+  local _ = nil;
+  _, addonSettingsCategoryID = AceDialog:AddToBlizOptions(namespace, nil, nil, "General")
+  AceDialog:AddToBlizOptions(namespace, L["Quest progresses"], namespace, "Progress")
+  AceDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency")
+  AceDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators")
+  AceDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances")
+  _, charactersFrameElementID = AceDialog
+          :AddToBlizOptions(namespace, L["Characters"], namespace, "Characters")
+end
 function Config:ReopenConfigDisplay(frame)
+  assert(addonSettingsCategoryID, 
+    "Config:ReopenConfigDisplay: `addonSettingsCategoryID` is `nil`. Addon settings not registered?"
+  )
   if _G.SettingsPanel:IsShown() then
     HideUIPanel(_G.SettingsPanel)
-    Settings_OpenToCategory(configFrameName)
+    Settings_OpenToCategory(addonSettingsCategoryID)
     -- Settings.OpenToCategory(frame)
     -- Not possible due to lack of WoW feature
   end
 end
 
 function Config:ShowConfig()
+  assert(addonSettingsCategoryID, 
+    "Config:ShowConfig: `addonSettingsCategoryID` is `nil`. Addon settings not registered?"
+  )
   if _G.SettingsPanel:IsShown() then
     HideUIPanel(_G.SettingsPanel)
   else
-    Settings_OpenToCategory(configFrameName)
+    Settings_OpenToCategory(addonSettingsCategoryID)
   end
 end
 
-function Config:SetupOptions()
-  Config:BuildOptions()
-
-  local namespace = "SavedInstances"
-  LibStub("AceConfig-3.0"):RegisterOptionsTable(namespace, SI.Options, { "si", "savedinstances" })
-
-  local AceConfigDialog = LibStub("AceConfigDialog-3.0")
-  local _, genernalFrameName = AceConfigDialog:AddToBlizOptions(namespace, nil, nil, "General")
-  AceConfigDialog:AddToBlizOptions(namespace, L["Quest progresses"], namespace, "Progress")
-  AceConfigDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency")
-  AceConfigDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators")
-  AceConfigDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances")
-  local _, charactersFrameName = AceConfigDialog:AddToBlizOptions(namespace, L["Characters"], namespace, "Characters")
-
-  configFrameName = genernalFrameName
-  configCharactersFrameName = charactersFrameName
-end
 
 local function ResetConfirmed()
   SI:Debug("Resetting characters")
@@ -968,8 +1043,8 @@ local function ResetConfirmed()
   SI.PlayedTime = nil -- reset played cache
   SI:toonInit() -- rebuild SI.thisToon
   SI:Refresh()
-  Config:BuildOptions() -- refresh config table
-  Config:ReopenConfigDisplay(configCharactersFrameName)
+  Config:BuildAceConfigOptions() -- refresh config table
+  Config:ReopenConfigDisplay(characterSettingsElementID)
 end
 
 local function DeleteCharacter(toon)
@@ -984,8 +1059,8 @@ local function DeleteCharacter(toon)
     i[toon] = nil
   end
   SI.db.Toons[toon] = nil
-  Config:BuildOptions() -- refresh config table
-  Config:ReopenConfigDisplay(configCharactersFrameName)
+  Config:BuildAceConfigOptions() -- refresh config table
+  Config:ReopenConfigDisplay(characterSettingsElementID)
 end
 
 StaticPopupDialogs["SAVEDINSTANCES_RESET"] = {
