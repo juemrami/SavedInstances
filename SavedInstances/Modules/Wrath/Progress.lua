@@ -1,4 +1,4 @@
----@type SavedInstances.Wrath
+---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
 
 ---@class ProgressModule.Wrath : AceModule, AceEvent-3.0

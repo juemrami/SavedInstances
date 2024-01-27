@@ -89,7 +89,7 @@ local Currency = SI:GetModule('Currency')
 ---@cast Config ConfigModule
 ---@cast Tooltip TooltipModule
 ---@cast Progress ProgressModule.Wrath
----@cast TradeSkill TradeSkillModule
+---@cast TradeSkill TradeSkillModule.Wrath
 ---@cast Currency CurrencyModule
 
 local Calling  ---@type AceModule?
@@ -4656,7 +4656,9 @@ function SI:ShowTooltip(anchorframe)
       tooltip:AddLine(YELLOWFONT .. L["Quest progresses"] .. FONTEND)
     end
   end)
+
   if SI.isRetail then
+    --- Warfronts
     Warfront:ShowTooltip(tooltip, columns, showall, function()
       if SI.db.Tooltip.CategorySpaces then
         addsep()
@@ -4665,6 +4667,407 @@ function SI:ShowTooltip(anchorframe)
         tooltip:AddLine(YELLOWFONT .. L["Warfronts"] .. FONTEND)
       end
     end)
+    --- Myhtic Plus
+    if SI.db.Tooltip.MythicKey or showall then
+      ---@type boolean|number
+      local show = false
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.MythicKey then
+          if t.MythicKey.link then
+            show = true
+            addColumns(columns, toon, tooltip)
+          end
+        end
+      end
+      if show then
+        if SI.db.Tooltip.CategorySpaces then
+          addsep()
+        end
+        show = tooltip:AddLine(YELLOWFONT .. L["Mythic Keystone"] .. FONTEND)
+        tooltip:SetCellScript(show, 1, "OnEnter", hoverTooltip.ShowKeyReportTarget)
+        tooltip:SetCellScript(show, 1, "OnLeave", CloseTooltips)
+        tooltip:SetCellScript(show, 1, "OnMouseDown", ReportKeys, 'MythicKey')
+      end
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.MythicKey and t.MythicKey.link then
+          local col = columns[toon..1]
+          local name
+          if SI.db.Tooltip.AbbreviateKeystone then
+            name = SI.KeystoneAbbrev[t.MythicKey.mapID] or t.MythicKey.name
+          else
+            name = t.MythicKey.name
+          end
+          ---@cast show number
+          tooltip:SetCell(show, col, "|c" .. t.MythicKey.color .. name .. " (" .. t.MythicKey.level .. ")" .. FONTEND,nil, "CENTER", maxcol)
+          tooltip:SetCellScript(show, col, "OnMouseDown", ChatLink, t.MythicKey.link)
+        end
+      end
+    end
+    if SI.db.Tooltip.TimewornMythicKey or showall then
+      ---@type boolean|number
+      local show = false
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.TimewornMythicKey and t.TimewornMythicKey.link then
+          show = true
+          addColumns(columns, toon, tooltip)
+        end
+      end
+      if show then
+        if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or showall) then
+          addsep()
+        end
+        show = tooltip:AddLine(YELLOWFONT .. L["Timeworn Mythic Keystone"] .. FONTEND)
+        tooltip:SetCellScript(show, 1, "OnEnter", hoverTooltip.ShowKeyReportTarget)
+        tooltip:SetCellScript(show, 1, "OnLeave", CloseTooltips)
+        tooltip:SetCellScript(show, 1, "OnMouseDown", ReportKeys, 'TimewornMythicKey')
+      end
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.TimewornMythicKey and t.TimewornMythicKey.link then
+          local col = columns[toon..1]
+          local name
+          if SI.db.Tooltip.AbbreviateKeystone then
+            name = SI.KeystoneAbbrev[t.TimewornMythicKey.mapID] or t.TimewornMythicKey.name
+          else
+            name = t.TimewornMythicKey.name
+          end
+          ---@cast show number
+          tooltip:SetCell(show, col, "|c" .. t.TimewornMythicKey.color .. name .. " (" .. t.TimewornMythicKey.level .. ")" .. FONTEND, nil,"CENTER", maxcol)
+          tooltip:SetCellScript(show, col, "OnMouseDown", ChatLink, t.TimewornMythicKey.link)
+        end
+      end
+    end
+    if SI.db.Tooltip.MythicKeyBest or showall then
+      ---@type boolean|number
+      local show = false
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.MythicKeyBest then
+          if t.MythicKeyBest.lastCompletedIndex or t.MythicKeyBest.rewardWaiting then
+            show = true
+            addColumns(columns, toon, tooltip)
+          end
+        end
+      end
+      if show then
+        if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or SI.db.Tooltip.TimewornMythicKey or showall) then
+          addsep()
+        end
+        show = tooltip:AddLine(YELLOWFONT .. L["Mythic Key Best"] .. FONTEND)
+      end
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.MythicKeyBest then
+          local keydesc = ""
+          if t.MythicKeyBest.lastCompletedIndex then
+            for index = 1, t.MythicKeyBest.lastCompletedIndex do
+              if t.MythicKeyBest[index] then
+                keydesc = keydesc .. (index > 1 and "||" or "") .. t.MythicKeyBest[index]
+              end
+            end
+          end
+          if t.MythicKeyBest.rewardWaiting then
+            if keydesc == "" then
+              keydesc = SI.questTurnin
+            else
+              keydesc = keydesc .. "(" .. SI.questTurnin .. ")"
+            end
+          end
+          if keydesc ~= "" then
+            local col = columns[toon..1]
+            ---@cast show number
+            tooltip:SetCell(show, col, keydesc, nil, "CENTER", maxcol)
+            tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowMythicPlusTooltip, {toon, keydesc})
+            tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
+          end
+        end
+      end
+    end
+    --- Emissary
+    local firstEmissary = true
+    for expansionLevel, _ in pairs(SI.Emissaries) do
+      if SI.db.Tooltip["Emissary" .. expansionLevel] or showall then
+        local day, tbl, show
+        for toon, t in cpairs(SI.db.Toons, true) do
+          if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
+            for day, tbl in pairs(t.Emissary[expansionLevel].days) do
+              if showall or SI.db.Tooltip.EmissaryShowCompleted == true or tbl.isComplete == false then
+                if not show then show = {} end
+                if not show[day] then show[day] = {} end
+                if not show[day][1] then
+                  show[day][1] = t.Faction
+                elseif show[day][1] ~= t.Faction then
+                  show[day][2] = t.Faction
+                end
+              end
+            end
+          end
+        end
+
+        if show then
+          if firstEmissary == true then
+            if SI.db.Tooltip.CategorySpaces then
+              addsep()
+            end
+            if SI.db.Tooltip.ShowCategories then
+              tooltip:AddLine(YELLOWFONT .. L["Emissary Quests"] .. FONTEND)
+            end
+            firstEmissary = false
+          end
+
+          if SI.db.Tooltip.CombineEmissary then
+            local line = tooltip:AddLine(GOLDFONT .. _G["EXPANSION_NAME" .. expansionLevel] .. FONTEND)
+            tooltip:SetCellScript(line, 1, "OnEnter", hoverTooltip.ShowEmissarySummary, {expansionLevel, {1, 2, 3}})
+            tooltip:SetCellScript(line, 1, "OnLeave", CloseTooltips)
+            for toon, t in cpairs(SI.db.Toons, true) do
+              if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
+                for day = 1, 3 do
+                  tbl = t.Emissary[expansionLevel].days[day]
+                  if tbl then
+                    local col = columns[toon .. day]
+                    local text = ""
+                    if tbl.isComplete == true then
+                      text = SI.questCheckMark
+                    elseif tbl.isFinish == true then
+                      text = SI.questTurnin
+                    else
+                      text = tbl.questDone
+                      if (
+                        SI.db.Emissary.Expansion[expansionLevel][day] and
+                        SI.db.Emissary.Expansion[expansionLevel][day].questNeed
+                      ) then
+                        text = text .. "/" .. SI.db.Emissary.Expansion[expansionLevel][day].questNeed
+                      end
+                    end
+                    if col then
+                      -- check if current toon is showing
+                      -- don't add columns
+                      tooltip:SetCell(line, col, text,nil, "CENTER", 1)
+                      tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowEmissaryTooltip, {expansionLevel, day, toon})
+                      tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
+                    end
+                  end
+                end
+              end
+            end
+          else
+            for day = 1, 3 do
+              if show[day] and show[day][1] then
+                local name = ""
+                if not SI.db.Emissary.Expansion[expansionLevel][day] then
+                  name = L["Emissary Missing"]
+                else
+                  local length, tbl = 0, SI.db.Emissary.Expansion[expansionLevel][day].questID
+                  if SI.db.Emissary.Cache[tbl[show[day][1]]] then
+                    name = SI.db.Emissary.Cache[tbl[show[day][1]]]
+                    length = length + 1
+                  end
+                  if (length == 0 or SI.db.Tooltip.EmissaryFullName) and show[day][2] then
+                    if tbl[show[day][1]] ~= tbl[show[day][2]] and SI.db.Emissary.Cache[tbl[show[day][2]]] then
+                      if length > 0 then
+                        name = name .. " / "
+                      end
+                      name = name .. SI.db.Emissary.Cache[tbl[show[day][2]]]
+                      length = length + 1
+                    end
+                  end
+                  if length == 0 then
+                    name = L["Emissary Missing"]
+                  end
+                end
+                local line = tooltip:AddLine(GOLDFONT .. name .. " (+" .. (day - 1) .. " " .. L["Day"] .. ")" .. FONTEND)
+                tooltip:SetCellScript(line, 1, "OnEnter", hoverTooltip.ShowEmissarySummary, {expansionLevel, {day}})
+                tooltip:SetCellScript(line, 1, "OnLeave", CloseTooltips)
+
+                for toon, t in cpairs(SI.db.Toons, true) do
+                  if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
+                    tbl = t.Emissary[expansionLevel].days[day]
+                    if tbl then
+                      local col = columns[toon .. 1]
+                      local text = ""
+                      if tbl.isComplete == true then
+                        text = SI.questCheckMark
+                      elseif tbl.isFinish == true then
+                        text = SI.questTurnin
+                      else
+                        text = tbl.questDone
+                        if (
+                          SI.db.Emissary.Expansion[expansionLevel][day] and
+                          SI.db.Emissary.Expansion[expansionLevel][day].questNeed
+                        ) then
+                          text = text .. "/" .. SI.db.Emissary.Expansion[expansionLevel][day].questNeed
+                        end
+                      end
+                      if col then
+                        -- check if current toon is showing
+                        -- don't add columns
+                        tooltip:SetCell(line, col, text, nil, "CENTER", maxcol)
+                        tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowEmissaryTooltip, {expansionLevel, day, toon})
+                        tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    --- Callings
+    if SI.db.Tooltip.Calling or showall then
+      local show
+      for day = 1, 3 do
+        for toon, t in cpairs(SI.db.Toons, true) do
+          if t.Calling and t.Calling.unlocked then
+            if showall or SI.db.Tooltip.CallingShowCompleted or (t.Calling[day] and not t.Calling[day].isCompleted) then
+              if not show then show = {} end
+              show[day] = true
+              break
+            end
+          end
+        end
+      end
+      if show then
+        if SI.db.Tooltip.CategorySpaces then
+          addsep()
+        end
+        if SI.db.Tooltip.CombineCalling then
+          local line = tooltip:AddLine(GOLDFONT .. CALLINGS_QUESTS .. FONTEND)
+          for toon, t in cpairs(SI.db.Toons, true) do
+            if t.Calling and t.Calling.unlocked then
+              for day = 1, 3 do
+                local col = columns[toon .. day]
+                local text = ""
+                if t.Calling[day].isCompleted then
+                  text = SI.questCheckMark
+                elseif not t.Calling[day].isOnQuest then
+                  text = SI.questNormal
+                elseif t.Calling[day].isFinished then
+                  text = SI.questTurnin
+                else
+                  if t.Calling[day].objectiveType == 'progressbar' then
+                    text = floor(t.Calling[day].questDone / t.Calling[day].questNeed * 100) .. "%"
+                  else
+                    text = t.Calling[day].questDone .. '/' .. t.Calling[day].questNeed
+                  end
+                end
+                if col then
+                  -- check if current toon is showing
+                  -- don't add columns
+                  tooltip:SetCell(line, col, text, nil, "CENTER", 1)
+                  tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowCallingTooltip, {day, toon})
+                  tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
+                end
+              end
+            end
+          end
+        else
+          if SI.db.Tooltip.ShowCategories then
+            tooltip:AddLine(YELLOWFONT .. CALLINGS_QUESTS .. FONTEND)
+          end
+          for day = 1, 3 do
+            if show[day] then
+              local name = L["Calling Missing"]
+              -- try current toon first
+              local t = SI.db.Toons[SI.thisToon]
+              if t and t.Calling and t.Calling[day] and t.Calling[day].title then
+                name = t.Calling[day].title
+              else
+                for _, t in pairs(SI.db.Toons) do
+                  if t.Calling and t.Calling[day] and t.Calling[day].title then
+                    name = t.Calling[day].title
+                    break
+                  end
+                end
+              end
+              local line = tooltip:AddLine(GOLDFONT .. name .. " (+" .. (day - 1) .. " " .. L["Day"] .. ")" .. FONTEND)
+
+              for toon, t in cpairs(SI.db.Toons, true) do
+                if t.Calling and t.Calling.unlocked then
+                  local col = columns[toon .. 1]
+                  local text = ""
+                  if t.Calling[day].isCompleted then
+                    text = SI.questCheckMark
+                  elseif not t.Calling[day].isOnQuest then
+                    text = SI.questNormal
+                  elseif t.Calling[day].isFinished then
+                    text = SI.questTurnin
+                  else
+                    if t.Calling[day].objectiveType == 'progressbar' then
+                      text = floor(t.Calling[day].questDone / t.Calling[day].questNeed * 100) .. "%"
+                    else
+                      text = t.Calling[day].questDone .. '/' .. t.Calling[day].questNeed
+                    end
+                  end
+                  if col then
+                    -- check if current toon is showing
+                    -- don't add columns
+                    tooltip:SetCell(line, col, text, nil, "CENTER", maxcol)
+                    tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowCallingTooltip, {day, toon})
+                    tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+    --- Reputation Paragon Chests 
+    if SI.db.Tooltip.TrackParagon or showall then
+      local show
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if t.Paragon and #t.Paragon > 0 then
+          show = true
+          addColumns(columns, toon, tooltip)
+        end
+      end
+      if show then
+        if SI.db.Tooltip.CategorySpaces then
+          addsep()
+        end
+        show = tooltip:AddLine(YELLOWFONT .. L["Paragon Chests"] .. FONTEND)
+        for toon, t in cpairs(SI.db.Toons, true) do
+          if t.Paragon and #t.Paragon > 0 then
+            local col = columns[toon..1]
+            tooltip:SetCell(show, col, #t.Paragon, nil, "CENTER", maxcol)
+            tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowParagonTooltip, toon)
+            tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
+          end
+        end
+      end
+    end
+    --- Bonus Rolls
+    if SI.db.Tooltip.TrackBonus or showall then
+      local show
+      local toonbonus = localarr("toonbonus")
+      for toon, t in cpairs(SI.db.Toons, true) do
+        ---@diagnostic disable-next-line: undefined-field
+        local count = SI:BonusRollCount(toon)
+        if count then
+          toonbonus[toon] = count
+          show = true
+        end
+      end
+      if show then
+        if SI.db.Tooltip.CategorySpaces then
+          addsep()
+        end
+        show = tooltip:AddLine(YELLOWFONT .. L["Roll Bonus"] .. FONTEND)
+      end
+      for toon, t in cpairs(SI.db.Toons, true) do
+        if toonbonus[toon] then
+          local col = columns[toon..1]
+          local str = toonbonus[toon]
+          if str > 0 then str = "+"..str end
+          if col then
+            -- check if current toon is showing
+            -- don't add columns
+            tooltip:SetCell(show, col, ClassColorise(t.Class,str), nil, "CENTER", maxcol)
+            tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowBonusTooltip, toon)
+            tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
+          end
+        end
+      end
+    end
   end
 
   if SI.db.Tooltip.TrackSkills or showall then
@@ -4696,410 +5099,7 @@ function SI:ShowTooltip(anchorframe)
       end
     end
   end
-
-  if SI.db.Tooltip.MythicKey or showall then
-    ---@type boolean|number
-    local show = false
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.MythicKey then
-        if t.MythicKey.link then
-          show = true
-          addColumns(columns, toon, tooltip)
-        end
-      end
-    end
-    if show then
-      if SI.db.Tooltip.CategorySpaces then
-        addsep()
-      end
-      show = tooltip:AddLine(YELLOWFONT .. L["Mythic Keystone"] .. FONTEND)
-      tooltip:SetCellScript(show, 1, "OnEnter", hoverTooltip.ShowKeyReportTarget)
-      tooltip:SetCellScript(show, 1, "OnLeave", CloseTooltips)
-      tooltip:SetCellScript(show, 1, "OnMouseDown", ReportKeys, 'MythicKey')
-    end
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.MythicKey and t.MythicKey.link then
-        local col = columns[toon..1]
-        local name
-        if SI.db.Tooltip.AbbreviateKeystone then
-          name = SI.KeystoneAbbrev[t.MythicKey.mapID] or t.MythicKey.name
-        else
-          name = t.MythicKey.name
-        end
-        ---@cast show number
-        tooltip:SetCell(show, col, "|c" .. t.MythicKey.color .. name .. " (" .. t.MythicKey.level .. ")" .. FONTEND,nil, "CENTER", maxcol)
-        tooltip:SetCellScript(show, col, "OnMouseDown", ChatLink, t.MythicKey.link)
-      end
-    end
-  end
-
-  if SI.db.Tooltip.TimewornMythicKey or showall then
-    ---@type boolean|number
-    local show = false
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.TimewornMythicKey and t.TimewornMythicKey.link then
-        show = true
-        addColumns(columns, toon, tooltip)
-      end
-    end
-    if show then
-      if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or showall) then
-        addsep()
-      end
-      show = tooltip:AddLine(YELLOWFONT .. L["Timeworn Mythic Keystone"] .. FONTEND)
-      tooltip:SetCellScript(show, 1, "OnEnter", hoverTooltip.ShowKeyReportTarget)
-      tooltip:SetCellScript(show, 1, "OnLeave", CloseTooltips)
-      tooltip:SetCellScript(show, 1, "OnMouseDown", ReportKeys, 'TimewornMythicKey')
-    end
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.TimewornMythicKey and t.TimewornMythicKey.link then
-        local col = columns[toon..1]
-        local name
-        if SI.db.Tooltip.AbbreviateKeystone then
-          name = SI.KeystoneAbbrev[t.TimewornMythicKey.mapID] or t.TimewornMythicKey.name
-        else
-          name = t.TimewornMythicKey.name
-        end
-        ---@cast show number
-        tooltip:SetCell(show, col, "|c" .. t.TimewornMythicKey.color .. name .. " (" .. t.TimewornMythicKey.level .. ")" .. FONTEND, nil,"CENTER", maxcol)
-        tooltip:SetCellScript(show, col, "OnMouseDown", ChatLink, t.TimewornMythicKey.link)
-      end
-    end
-  end
-
-  if SI.db.Tooltip.MythicKeyBest or showall then
-    ---@type boolean|number
-    local show = false
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.MythicKeyBest then
-        if t.MythicKeyBest.lastCompletedIndex or t.MythicKeyBest.rewardWaiting then
-          show = true
-          addColumns(columns, toon, tooltip)
-        end
-      end
-    end
-    if show then
-      if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or SI.db.Tooltip.TimewornMythicKey or showall) then
-        addsep()
-      end
-      show = tooltip:AddLine(YELLOWFONT .. L["Mythic Key Best"] .. FONTEND)
-    end
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.MythicKeyBest then
-        local keydesc = ""
-        if t.MythicKeyBest.lastCompletedIndex then
-          for index = 1, t.MythicKeyBest.lastCompletedIndex do
-            if t.MythicKeyBest[index] then
-              keydesc = keydesc .. (index > 1 and "||" or "") .. t.MythicKeyBest[index]
-            end
-          end
-        end
-        if t.MythicKeyBest.rewardWaiting then
-          if keydesc == "" then
-            keydesc = SI.questTurnin
-          else
-            keydesc = keydesc .. "(" .. SI.questTurnin .. ")"
-          end
-        end
-        if keydesc ~= "" then
-          local col = columns[toon..1]
-          ---@cast show number
-          tooltip:SetCell(show, col, keydesc, nil, "CENTER", maxcol)
-          tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowMythicPlusTooltip, {toon, keydesc})
-          tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
-        end
-      end
-    end
-  end
-
-  local firstEmissary = true
-  for expansionLevel, _ in pairs(SI.Emissaries) do
-    if SI.db.Tooltip["Emissary" .. expansionLevel] or showall then
-      local day, tbl, show
-      for toon, t in cpairs(SI.db.Toons, true) do
-        if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
-          for day, tbl in pairs(t.Emissary[expansionLevel].days) do
-            if showall or SI.db.Tooltip.EmissaryShowCompleted == true or tbl.isComplete == false then
-              if not show then show = {} end
-              if not show[day] then show[day] = {} end
-              if not show[day][1] then
-                show[day][1] = t.Faction
-              elseif show[day][1] ~= t.Faction then
-                show[day][2] = t.Faction
-              end
-            end
-          end
-        end
-      end
-
-      if show then
-        if firstEmissary == true then
-          if SI.db.Tooltip.CategorySpaces then
-            addsep()
-          end
-          if SI.db.Tooltip.ShowCategories then
-            tooltip:AddLine(YELLOWFONT .. L["Emissary Quests"] .. FONTEND)
-          end
-          firstEmissary = false
-        end
-
-        if SI.db.Tooltip.CombineEmissary then
-          local line = tooltip:AddLine(GOLDFONT .. _G["EXPANSION_NAME" .. expansionLevel] .. FONTEND)
-          tooltip:SetCellScript(line, 1, "OnEnter", hoverTooltip.ShowEmissarySummary, {expansionLevel, {1, 2, 3}})
-          tooltip:SetCellScript(line, 1, "OnLeave", CloseTooltips)
-          for toon, t in cpairs(SI.db.Toons, true) do
-            if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
-              for day = 1, 3 do
-                tbl = t.Emissary[expansionLevel].days[day]
-                if tbl then
-                  local col = columns[toon .. day]
-                  local text = ""
-                  if tbl.isComplete == true then
-                    text = SI.questCheckMark
-                  elseif tbl.isFinish == true then
-                    text = SI.questTurnin
-                  else
-                    text = tbl.questDone
-                    if (
-                      SI.db.Emissary.Expansion[expansionLevel][day] and
-                      SI.db.Emissary.Expansion[expansionLevel][day].questNeed
-                    ) then
-                      text = text .. "/" .. SI.db.Emissary.Expansion[expansionLevel][day].questNeed
-                    end
-                  end
-                  if col then
-                    -- check if current toon is showing
-                    -- don't add columns
-                    tooltip:SetCell(line, col, text,nil, "CENTER", 1)
-                    tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowEmissaryTooltip, {expansionLevel, day, toon})
-                    tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
-                  end
-                end
-              end
-            end
-          end
-        else
-          for day = 1, 3 do
-            if show[day] and show[day][1] then
-              local name = ""
-              if not SI.db.Emissary.Expansion[expansionLevel][day] then
-                name = L["Emissary Missing"]
-              else
-                local length, tbl = 0, SI.db.Emissary.Expansion[expansionLevel][day].questID
-                if SI.db.Emissary.Cache[tbl[show[day][1]]] then
-                  name = SI.db.Emissary.Cache[tbl[show[day][1]]]
-                  length = length + 1
-                end
-                if (length == 0 or SI.db.Tooltip.EmissaryFullName) and show[day][2] then
-                  if tbl[show[day][1]] ~= tbl[show[day][2]] and SI.db.Emissary.Cache[tbl[show[day][2]]] then
-                    if length > 0 then
-                      name = name .. " / "
-                    end
-                    name = name .. SI.db.Emissary.Cache[tbl[show[day][2]]]
-                    length = length + 1
-                  end
-                end
-                if length == 0 then
-                  name = L["Emissary Missing"]
-                end
-              end
-              local line = tooltip:AddLine(GOLDFONT .. name .. " (+" .. (day - 1) .. " " .. L["Day"] .. ")" .. FONTEND)
-              tooltip:SetCellScript(line, 1, "OnEnter", hoverTooltip.ShowEmissarySummary, {expansionLevel, {day}})
-              tooltip:SetCellScript(line, 1, "OnLeave", CloseTooltips)
-
-              for toon, t in cpairs(SI.db.Toons, true) do
-                if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
-                  tbl = t.Emissary[expansionLevel].days[day]
-                  if tbl then
-                    local col = columns[toon .. 1]
-                    local text = ""
-                    if tbl.isComplete == true then
-                      text = SI.questCheckMark
-                    elseif tbl.isFinish == true then
-                      text = SI.questTurnin
-                    else
-                      text = tbl.questDone
-                      if (
-                        SI.db.Emissary.Expansion[expansionLevel][day] and
-                        SI.db.Emissary.Expansion[expansionLevel][day].questNeed
-                      ) then
-                        text = text .. "/" .. SI.db.Emissary.Expansion[expansionLevel][day].questNeed
-                      end
-                    end
-                    if col then
-                      -- check if current toon is showing
-                      -- don't add columns
-                      tooltip:SetCell(line, col, text, nil, "CENTER", maxcol)
-                      tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowEmissaryTooltip, {expansionLevel, day, toon})
-                      tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
-                    end
-                  end
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-
-  if SI.db.Tooltip.Calling or showall then
-    local show
-    for day = 1, 3 do
-      for toon, t in cpairs(SI.db.Toons, true) do
-        if t.Calling and t.Calling.unlocked then
-          if showall or SI.db.Tooltip.CallingShowCompleted or (t.Calling[day] and not t.Calling[day].isCompleted) then
-            if not show then show = {} end
-            show[day] = true
-            break
-          end
-        end
-      end
-    end
-    if show then
-      if SI.db.Tooltip.CategorySpaces then
-        addsep()
-      end
-      if SI.db.Tooltip.CombineCalling then
-        local line = tooltip:AddLine(GOLDFONT .. CALLINGS_QUESTS .. FONTEND)
-        for toon, t in cpairs(SI.db.Toons, true) do
-          if t.Calling and t.Calling.unlocked then
-            for day = 1, 3 do
-              local col = columns[toon .. day]
-              local text = ""
-              if t.Calling[day].isCompleted then
-                text = SI.questCheckMark
-              elseif not t.Calling[day].isOnQuest then
-                text = SI.questNormal
-              elseif t.Calling[day].isFinished then
-                text = SI.questTurnin
-              else
-                if t.Calling[day].objectiveType == 'progressbar' then
-                  text = floor(t.Calling[day].questDone / t.Calling[day].questNeed * 100) .. "%"
-                else
-                  text = t.Calling[day].questDone .. '/' .. t.Calling[day].questNeed
-                end
-              end
-              if col then
-                -- check if current toon is showing
-                -- don't add columns
-                tooltip:SetCell(line, col, text, nil, "CENTER", 1)
-                tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowCallingTooltip, {day, toon})
-                tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
-              end
-            end
-          end
-        end
-      else
-        if SI.db.Tooltip.ShowCategories then
-          tooltip:AddLine(YELLOWFONT .. CALLINGS_QUESTS .. FONTEND)
-        end
-        for day = 1, 3 do
-          if show[day] then
-            local name = L["Calling Missing"]
-            -- try current toon first
-            local t = SI.db.Toons[SI.thisToon]
-            if t and t.Calling and t.Calling[day] and t.Calling[day].title then
-              name = t.Calling[day].title
-            else
-              for _, t in pairs(SI.db.Toons) do
-                if t.Calling and t.Calling[day] and t.Calling[day].title then
-                  name = t.Calling[day].title
-                  break
-                end
-              end
-            end
-            local line = tooltip:AddLine(GOLDFONT .. name .. " (+" .. (day - 1) .. " " .. L["Day"] .. ")" .. FONTEND)
-
-            for toon, t in cpairs(SI.db.Toons, true) do
-              if t.Calling and t.Calling.unlocked then
-                local col = columns[toon .. 1]
-                local text = ""
-                if t.Calling[day].isCompleted then
-                  text = SI.questCheckMark
-                elseif not t.Calling[day].isOnQuest then
-                  text = SI.questNormal
-                elseif t.Calling[day].isFinished then
-                  text = SI.questTurnin
-                else
-                  if t.Calling[day].objectiveType == 'progressbar' then
-                    text = floor(t.Calling[day].questDone / t.Calling[day].questNeed * 100) .. "%"
-                  else
-                    text = t.Calling[day].questDone .. '/' .. t.Calling[day].questNeed
-                  end
-                end
-                if col then
-                  -- check if current toon is showing
-                  -- don't add columns
-                  tooltip:SetCell(line, col, text, nil, "CENTER", maxcol)
-                  tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowCallingTooltip, {day, toon})
-                  tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
-                end
-              end
-            end
-          end
-        end
-      end
-    end
-  end
-
-  if SI.db.Tooltip.TrackParagon or showall then
-    local show
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if t.Paragon and #t.Paragon > 0 then
-        show = true
-        addColumns(columns, toon, tooltip)
-      end
-    end
-    if show then
-      if SI.db.Tooltip.CategorySpaces then
-        addsep()
-      end
-      show = tooltip:AddLine(YELLOWFONT .. L["Paragon Chests"] .. FONTEND)
-      for toon, t in cpairs(SI.db.Toons, true) do
-        if t.Paragon and #t.Paragon > 0 then
-          local col = columns[toon..1]
-          tooltip:SetCell(show, col, #t.Paragon, nil, "CENTER", maxcol)
-          tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowParagonTooltip, toon)
-          tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
-        end
-      end
-    end
-  end
-
-  if SI.db.Tooltip.TrackBonus or showall then
-    local show
-    local toonbonus = localarr("toonbonus")
-    for toon, t in cpairs(SI.db.Toons, true) do
-      ---@diagnostic disable-next-line: undefined-field
-      local count = SI:BonusRollCount(toon)
-      if count then
-        toonbonus[toon] = count
-        show = true
-      end
-    end
-    if show then
-      if SI.db.Tooltip.CategorySpaces then
-        addsep()
-      end
-      show = tooltip:AddLine(YELLOWFONT .. L["Roll Bonus"] .. FONTEND)
-    end
-    for toon, t in cpairs(SI.db.Toons, true) do
-      if toonbonus[toon] then
-        local col = columns[toon..1]
-        local str = toonbonus[toon]
-        if str > 0 then str = "+"..str end
-        if col then
-          -- check if current toon is showing
-          -- don't add columns
-          tooltip:SetCell(show, col, ClassColorise(t.Class,str), nil, "CENTER", maxcol)
-          tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowBonusTooltip, toon)
-          tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
-        end
-      end
-    end
-  end
-
+  
   local firstcurrency = true
   local ckeys = currency
   if SI.db.Tooltip.CurrencySortName then

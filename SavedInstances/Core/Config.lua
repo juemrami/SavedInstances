@@ -539,7 +539,7 @@ function Config:BuildAceConfigOptions()
           Calling = {
             type = "toggle",
             order = 49,
-            name = CALLINGS_QUESTS,
+            name = CALLINGS_QUESTS or "", -- nil in classic clients
             disabled = not SI.isRetail,
             hidden = not SI.isRetail,
           },
