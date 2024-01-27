@@ -42,5 +42,5 @@ Modules\Wrath\TradeSkill.lua
 # Modules\Warfront.lua
 # Modules\WorldBoss.lua
 
-Core\Wrath\Config.lua
+Core\Config.lua
 Core\Wrath\Core.lua
