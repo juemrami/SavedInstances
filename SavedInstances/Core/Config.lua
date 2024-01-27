@@ -1,7 +1,7 @@
 ---@class SavedInstances
 local SI, L = unpack((select(2, ...)))
 
----@class ConfigModule.Wrath : AceModule
+---@class ConfigModule : AceModule
 local Config = SI:NewModule('Config')
 
 local Tooltip = SI:GetModule('Tooltip')

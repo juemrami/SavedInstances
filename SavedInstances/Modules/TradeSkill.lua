@@ -1,4 +1,6 @@
+---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
+---@class TradeSkillModule : AceModule , AceEvent-3.0, AceTimer-3.0, AceBucket-3.0
 local Module = SI:NewModule('TradeSkill', 'AceEvent-3.0', 'AceTimer-3.0', 'AceBucket-3.0')
 
 -- Lua functions
@@ -7,12 +9,38 @@ local date, ipairs, tonumber, time = date, ipairs, tonumber, time
 local _G = _G
 
 -- WoW API / Variables
-local C_TradeSkillUI_GetAllRecipeIDs = C_TradeSkillUI.GetAllRecipeIDs
-local C_TradeSkillUI_GetFilteredRecipeIDs = C_TradeSkillUI.GetFilteredRecipeIDs
-local C_TradeSkillUI_GetRecipeCooldown = C_TradeSkillUI.GetRecipeCooldown
-local C_TradeSkillUI_IsTradeSkillGuild = C_TradeSkillUI.IsTradeSkillGuild
-local C_TradeSkillUI_IsTradeSkillLinked = C_TradeSkillUI.IsTradeSkillLinked
-local GetItemCooldown = GetItemCooldown
+local C_TradeSkillUI_GetAllRecipeIDs
+local C_TradeSkillUI_GetFilteredRecipeIDs 
+local C_TradeSkillUI_GetRecipeCooldown
+local C_TradeSkillUI_IsTradeSkillGuild
+local C_TradeSkillUI_IsTradeSkillLinked
+if C_TradeSkillUI then
+  assert(not SI.isClassicEra, 
+  "C_TradeSkillUI is now available in Classic! Open an issue on github to request support."
+  )
+  assert(not SI.isWrath, 
+  "C_TradeSkillUI is now available in Wrath! Open an issue on github to request support."
+  )
+  C_TradeSkillUI_GetAllRecipeIDs = C_TradeSkillUI.GetAllRecipeIDs
+  C_TradeSkillUI_GetFilteredRecipeIDs = C_TradeSkillUI.GetFilteredRecipeIDs
+  C_TradeSkillUI_GetRecipeCooldown = C_TradeSkillUI.GetRecipeCooldown
+  C_TradeSkillUI_IsTradeSkillGuild = C_TradeSkillUI.IsTradeSkillGuild
+  C_TradeSkillUI_IsTradeSkillLinked = C_TradeSkillUI.IsTradeSkillLinked
+else -- Wotlk/Era Compatibility
+  C_TradeSkillUI_IsTradeSkillLinked = IsTradeSkillLinked
+  C_TradeSkillUI_IsTradeSkillGuild = function() return false end
+  C_TradeSkillUI_GetAllRecipeIDs = function()
+    local ids = {}
+    for i = 1, GetNumTradeSkills() do
+      ids[i] = i
+    end
+    return ids
+  end
+  C_TradeSkillUI_GetFilteredRecipeIDs = C_TradeSkillUI_GetAllRecipeIDs
+  C_TradeSkillUI_GetRecipeCooldown = GetTradeSkillCooldown
+end
+local GetItemCooldown = GetItemCooldown 
+  or C_Container.GetItemCooldown -- former function not in the wotlk client
 local GetItemInfo = GetItemInfo
 local GetSpellInfo = GetSpellInfo
 local GetSpellLink = GetSpellLink
@@ -244,13 +272,18 @@ local itemCDs = { -- [spellID] = itemID
 
 local categoryNames = {
   ["xmute"] = GetSpellInfo(2259).. ": "..L["Transmute"],
-  ["wildxmute"] = GetSpellInfo(2259).. ": "..L["Wild Transmute"],
-  ["legionxmute"] = GetSpellInfo(2259).. ": "..L["Legion Transmute"],
-  ["dragonflightxmute"] = GetSpellInfo(2259).. ": "..L["Dragonflight Transmute"],
-  ["dragonflightexper"] = GetSpellInfo(2259).. ": "..L["Dragonflight Experimentation"],
-  ["facet"] = GetSpellInfo(25229)..": "..L["Facets of Research"],
-  ["sphere"] = GetSpellInfo(7411).. ": "..GetSpellInfo(28027),
-  ["magni"] = GetSpellInfo(2108).. ": "..GetSpellInfo(140040)
+  -- Legion Transmutes
+  ["wildxmute"] = SI.isRetail and (GetSpellInfo(2259).. ": "..L["Wild Transmute"]),
+  ["legionxmute"] = SI.isRetail and (GetSpellInfo(2259).. ": "..L["Legion Transmute"]),
+  -- Dragonflight Transmutes
+  ["dragonflightxmute"] = SI.isRetail and (GetSpellInfo(2259).. ": "..L["Dragonflight Transmute"]),
+  ["dragonflightexper"] = SI.isRetail and (GetSpellInfo(2259).. ": "..L["Dragonflight Experimentation"]),
+  -- Pandaria Jewelcrafting
+  ["facet"] =  SI.isRetail and (GetSpellInfo(25229) ..": "..L["Facets of Research"]),
+  -- Wotlk Enchanting
+  ["sphere"] = not SI.isClassicEra and (GetSpellInfo(7411).. ": "..GetSpellInfo(28027)),
+  -- Pandaria Leatherworking 
+  ["magni"] = SI.isRetail and (GetSpellInfo(25229) ..": "..GetSpellInfo(140040)),
 }
 
 function Module:OnEnable()
@@ -367,6 +400,15 @@ function Module:ScanTradeSkill(isAll)
   local data = isAll and C_TradeSkillUI_GetAllRecipeIDs() or C_TradeSkillUI_GetFilteredRecipeIDs()
   for _, spellID in ipairs(data) do
     local cooldown, isDayCooldown = C_TradeSkillUI_GetRecipeCooldown(spellID)
+
+    if isDayCooldown == nil then
+      local msCooldown = GetSpellBaseCooldown(spellID)
+      if msCooldown then
+        local days = msCooldown / (1000 * 60 * 60 * 24)
+        isDayCooldown = days >= 1
+      end
+    end
+    
     if (
       cooldown and isDayCooldown -- GetRecipeCooldown often returns WRONG answers for daily cds
       and not tonumber(tradeSpells[spellID]) -- daily flag incorrectly set for some multi-day cds (Northrend Alchemy Research)

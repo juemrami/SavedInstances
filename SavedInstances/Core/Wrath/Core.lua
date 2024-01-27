@@ -86,10 +86,10 @@ local Tooltip = SI:GetModule('Tooltip')
 local Progress = SI:GetModule('Progress')
 local TradeSkill = SI:GetModule('TradeSkill')
 local Currency = SI:GetModule('Currency')
----@cast Config ConfigModule.Wrath
+---@cast Config ConfigModule
 ---@cast Tooltip TooltipModule
 ---@cast Progress ProgressModule.Wrath
----@cast TradeSkill TradeSkillModule.Wrath
+---@cast TradeSkill TradeSkillModule
 ---@cast Currency CurrencyModule
 
 local Calling  ---@type AceModule?
