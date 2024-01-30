@@ -96,6 +96,10 @@ function SI:ClassColorString(toon, str)
   end
 
   local color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[class]) or RAID_CLASS_COLORS[class]
+  if color.WrapTextInColorCode then
+    return color:WrapTextInColorCode(str)
+  end
+  
   if color.colorStr then
     return "|c" .. color.colorStr .. str .. FONT_COLOR_CODE_CLOSE
   end

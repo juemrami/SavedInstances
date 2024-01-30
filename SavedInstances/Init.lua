@@ -13,6 +13,8 @@ Engine[2] = {} -- locale table.
 _G.SavedInstances = Engine
 
 SI.Libs = {}
+---@class QTip : LibQTip-1.0
+---@field Acquire fun(self: QTip, name: string, columns: number, ...)
 SI.Libs.QTip = LibStub('LibQTip-1.0')
 SI.Libs.LDB = LibStub('LibDataBroker-1.1', true)
 SI.Libs.LDBI = SI.Libs.LDB and LibStub('LibDBIcon-1.0', true)

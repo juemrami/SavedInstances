@@ -1,4 +1,4 @@
----@class SavedInstances: Frame
+---@class SavedInstances: AceEvent-3.0, Frame
 ---@field validCurrencies number[]
 ---@field private lastrefreshlocksched number?
 ---@field private PlayedTime number? Last time `Toon.PlayedLevel` and `Toon.PlayedTotal` were updated. Unix timestamp.
@@ -20,16 +20,28 @@ local SI, L = unpack((select(2, ...)))
 
 local QTip = SI.Libs.QTip
 local db
-local maxDifficultyID = 33 -- max number of instance difficulties
-local maxcol = 4 -- max columns per player+instance
-local maxDungeonID = 3000 -- highest possible value for an instanceID, 
 
+-- https://wago.tools/db2/Difficulty?sort[ID]=desc
 --- current max dungeonID's,
--- see https://wago.tools/db2/LFGDungeons? (filter by build)
--- retail client:  Amirdrassil, the Dream's Hope = 2504
--- wotlk client: The Oculus = 2497
--- classic client: Winterspring = 131
+-- retail (@10.2.5):  205 = "Follower"
+-- wotlk (@3.4.3): 194 = "25 Player (Heroic)"
+-- classic (@1.15.0): 207 = "Normal" 
+local MAX_DIFFICULTY_ID = (SI.isRetail and 205) 
+  or (SI.isWrath and 194) 
+  or (SI.isClassicEra and 207)
+  or 33; -- old defualt
 
+
+-- see https://wago.tools/db2/LFGDungeons? (filter by build)
+-- highest possible value for an instanceID, 
+-- retail client:  2530 = "Dawn of the Infinite: Murozond's Rise"
+-- wotlk client: 2497 = "The Oculus"
+-- classic client: 131 = "Winterspring"
+local MAX_LFG_DUNGEON_ID = (SI.isClassicEra and 131)
+  or (SI.isWrath and 2497) 
+  or 2530; -- assume retail 
+
+local maxcol = 4 -- max columns per player+instance (in tooltip)
 local table, math, bit, string, pairs, ipairs, unpack, strsplit, time, type, wipe, tonumber, select, strsub =
   table, math, bit, string, pairs, ipairs, unpack, strsplit, time, type, wipe, tonumber, select, strsub
 local GetSavedInstanceInfo, GetNumSavedInstances, GetSavedInstanceChatLink, GetLFGDungeonNumEncounters, GetLFGDungeonEncounterInfo, GetNumRandomDungeons, GetLFGRandomDungeonInfo, GetLFGDungeonInfo, GetLFGDungeonRewards, GetTime, UnitIsUnit, GetInstanceInfo, IsInInstance, SecondsToTime, GetNumGroupMembers, UnitAura =
@@ -63,14 +75,14 @@ if not (GetNumSpecializations and GetSpecializationInfo and GetSpecializationInf
   GetSpecializationInfo = GetSpecializationInfoForSpecID
 end
 local RAID_CLASS_COLORS = RAID_CLASS_COLORS
-local FONTEND = FONT_COLOR_CODE_CLOSE
+local FONTEND = FONT_COLOR_CODE_CLOSE or "\124r"
 local GOLDFONT = NORMAL_FONT_COLOR_CODE
 local YELLOWFONT = LIGHTYELLOW_FONT_COLOR_CODE
 local REDFONT = RED_FONT_COLOR_CODE
 local GREENFONT = GREEN_FONT_COLOR_CODE
 local WHITEFONT = HIGHLIGHT_FONT_COLOR_CODE
 local GRAYFONT = GRAY_FONT_COLOR_CODE
-local GRAY_COLOR = { 0.5, 0.5, 0.5, 1 }
+local GRAY_COLOR = GRAY_FONT_COLOR ---@type ColorMixin
 local INSTANCE_SAVED, TRANSFER_ABORT_TOO_MANY_INSTANCES, NO_RAID_INSTANCES_SAVED =
   INSTANCE_SAVED, TRANSFER_ABORT_TOO_MANY_INSTANCES, NO_RAID_INSTANCES_SAVED
 
@@ -89,7 +101,7 @@ local Currency = SI:GetModule('Currency')
 ---@cast Config ConfigModule
 ---@cast Tooltip TooltipModule
 ---@cast Progress ProgressModule.Wrath
----@cast TradeSkill TradeSkillModule.Wrath
+---@cast TradeSkill TradeSkillModule
 ---@cast Currency CurrencyModule
 
 local Calling  ---@type AceModule?
@@ -131,12 +143,12 @@ if not SI.isRetail then
   SI.Emissaries = {}
 end
 
-local maxExpansion
+local MAX_EXPANSION
 --- EXPANSION_LEVEL global refers to the id of the currently paid/active expansion for the logged in character. 
 for i = 0, EXPANSION_LEVEL do
   local xpacName = _G["EXPANSION_NAME"..i]
   if xpacName then
-    maxExpansion = i
+    MAX_EXPANSION = i
     SI.Categories["D"..i] = xpacName .. ": " .. LFG_TYPE_DUNGEON
     SI.Categories["R"..i] = xpacName .. ": " .. LFG_TYPE_RAID
   else
@@ -226,7 +238,7 @@ end
 
 ---@class QuestDBData : number, table
 
----@class SavedInstances.Wrath.Toon.Currency
+---@class SavedInstances.Toon.Currency
 ---@field amount number
 ---@field earnedThisWeek number
 ---@field weeklyMax number
@@ -234,7 +246,7 @@ end
 ---@field totalEarned number
 ---@field relatedItemCount number
 
----@class SavedInstances.Wrath.Toon.Quest
+---@class SavedInstances.Toon.Quest
 ---@field Title string
 ---@field Link string? In-game hyperlink.
 ---@field Zone UiMapDetails
@@ -242,22 +254,22 @@ end
 ---@field Expires number? For weekly or monthly quest expirations dates.
 ----@field type? "daily"|"weekly" 
 
----@class SavedInstances.Wrath.Toon.Skill
+---@class SavedInstances.Toon.Skill
 ---@field Title string
 ---@field Link string  SpellLink hyperlink.
 ---@field Expires number?
 
---- No SavedInstances.Wrath.Toon.BonusRoll
---- No SavedInstances.Wrath.Toon.MythicKey
+--- No SavedInstances.Toon.BonusRoll
+--- No SavedInstances.Toon.MythicKey
 --- {ResetTime: number?, }
---- No SavedInstances.Wrath.Toon.TimewornMythicKey
+--- No SavedInstances.Toon.TimewornMythicKey
 --- {ResetTime: number?, }
---- No SavedInstances.Wrath.Toon.MythicKeyBest
+--- No SavedInstances.Toon.MythicKeyBest
 --- {ResetTime: number?, rewardWaiting: boolean?, [1-3]: any, lastCompletedIndex: number?, runHistory: table}
---- No SavedInstances.Wrath.Toon.Emissary
---- No SavedInstances.Wrath.Toon.Calling
+--- No SavedInstances.Toon.Emissary
+--- No SavedInstances.Toon.Calling
 
----@class SavedInstances.Wrath.Toon
+---@class SavedInstances.Toon
 ---@field Class string Character's class "fileName" (used for indexing global tables)
 ---@field Level number
 ---@field Race string
@@ -280,10 +292,10 @@ end
 ---@field PlayedTotal number? lifetime `/played` time for character.
 ---@field Money number
 ---@field Zone string?
----@field Warmode boolean? Unused in Wrath.
----@field Covenant number? Unused in Wrath.
----@field MythicPlusScore number? Unused in Wrath.
----@field Paragon table? Unused in Wrath.
+---@field Warmode boolean? Unused in Wrath/Era.
+---@field Covenant number? Unused in Wrath/Era.
+---@field MythicPlusScore number? Unused in Wrath/Era.
+---@field Paragon table? Unused in Wrath/Era.
 ---@field oRace string locale-independent race name.
 ---@field isResting boolean
 ---@field MaxXP number
@@ -292,20 +304,20 @@ end
 ---@field RestXP number?
 ---@field Arena2v2rating number?
 ---@field Arena3v3rating number?
----@field RBGrating number? Unused in Wrath.
----@field SoloShuffleRating table? Unused in Wrath.
+---@field RBGrating number? Unused in Wrath/Era.
+---@field SoloShuffleRating table? Unused in Wrath/Era.
 ---@field SpecializationIDs table? keys: `1..GetNumSpecializations()`
----@field currency table<number, SavedInstances.Wrath.Toon.Currency>
----@field Quests table<number, SavedInstances.Wrath.Toon.Quest> Keyed by QuestID. Used to track *completed?* quests
----@field Skills table<number, SavedInstances.Wrath.Toon.Skill> Keyed by SpellID or CDID.
----@field BonusRoll any? Unused in Wrath.
----@field MythicKey any? Unused in Wrath.
----@field TimewornMythicKey any? Unused in Wrath.
----@field MythicKeyBest any? Unused in Wrath.
----@field Emissary any? Unused in Wrath.
----@field Progress table<string, QuestStore, QuestListStore> Unsure what key is 
----@field Warfront any? Unused in Wrath.
----@field Calling any? Unused in Wrath.
+---@field currency table<number, SavedInstances.Toon.Currency>
+---@field Quests table<number, SavedInstances.Toon.Quest> Keyed by QuestID. Used to track *completed?* quests
+---@field Skills table<number, SavedInstances.Toon.Skill> Keyed by SpellID or CDID.
+---@field BonusRoll any? Unused in Wrath/Era.
+---@field MythicKey any? Unused in Wrath/Era.
+---@field TimewornMythicKey any? Unused in Wrath/Era.
+---@field MythicKeyBest any? Unused in Wrath/Era.
+---@field Emissary table? Unused in Wrath/Era.
+---@field Progress table<string, QuestStore|QuestListStore> Unsure what key is 
+---@field Warfront any? Unused in Wrath/Era.
+---@field Calling any? Unused in Wrath/Era.
 ---@field lastboss string? Name of most recently killed boss, formatted `"BossName: DifficultyName"`
 ---@field lastbosstime number? Unix timestamp in seconds of most recently killed boss.
 
@@ -332,19 +344,22 @@ end
 --  }
 
 ---If instance is an LFR, lockout info can be keyed by encounter index to check if said encounter has been completed for the week.
----@class SavedInstances.Wrath.DB.Instance.LockoutInfo
+---@class SavedInstances.DB.Instance.LockoutInfo
 ---@field ID number the instance's `lockoutID` (as seen in /raidinfo). Set to `-1` for non-raid lockouts, and `-1*numBosses` for LFR wings.
 ---@field Expires number
 ---@field Locked boolean whether toon is locked to the save
 ---@field Extended boolean? whether this is an extended raid lockout
 ---@field Link string? hyperlink to the save in /raidinfo (doesnt work in either era or wotlk)
 ----@field type? "lfr"|"premade"|"random"|"holiday"|"scenario"|"worldboss" etc
+---@field encounters {localizedName: string, isComplete: boolean}[]
+---@field numEncounters integer
+---@field numCompleted integer
 ---@field [number] boolean # LFR isLooted keyed by encounter index using `GetLFGDungeonEncounterInfo`
 
 ---Table containing info relating to the saved var `Instance` entry. Table can also be queried by [toonName][[difficultyID](https://wago.tools/db2/Difficulty)]
----mapping to a `SavedInstances.Wrath.DB.Instance.LockoutInfo` table, 
+---mapping to a `SavedInstances.DB.Instance.LockoutInfo` table, 
 ---used for tracking a character's lockout information for this instance. 
----@class SavedInstances.Wrath.DB.Instance.Entry
+---@class SavedInstances.DB.Instance.Entry
 ---@field Show SavedInstances.Toon.ShowState
 ---@field Raid boolean
 ---@field Holiday boolean
@@ -353,25 +368,25 @@ end
 ---@field Random boolean
 ---@field Expansion number
 ---@field RecLevel number
----@field LFDID number https://warcraft.wiki.gg/wiki/LfgDungeonID 
----@field lfgDungeonID number? https://warcraft.wiki.gg/wiki/LfgDungeonID (will use this field going forward)
----@field [tooName] {[number]: SavedInstances.Wrath.DB.Instance.LockoutInfo }  Keyed by [toonName][[difficultyID](https://wago.tools/db2/Difficulty)]
+---@field LFDID number? https://warcraft.wiki.gg/wiki/LfgDungeonID (depracated)
+---@field lfgDungeonID number https://warcraft.wiki.gg/wiki/LfgDungeonID (will use this field going forward)
+---@field [tooName] {[number]: SavedInstances.DB.Instance.LockoutInfo }  Keyed by [toonName][[difficultyID](https://wago.tools/db2/Difficulty)]
 ---@field LFDupdated number? REMOVED
 ---@field Encounters table? REMOVED
 
 --- The Addon's store. The data in this table is stored in blizzard's `SavedVariables` file for this addon.
----@class SavedInstances.Wrath.DB
+---@class SavedInstances.DB
 ---@field DBVersion number Internal version of the database "schema".
 ---@field History table<string, {create: number, desc: string, last: number?}> For tracking instance per hour limit. Maps keys from `SI:histZoneKey` to value of `GetTime()` when instance was entered.
 ---@field histGeneration number Number in range [1-100000]. Defaults to `1`. Incremented when a instance reset is incurred while not in a zone. 
----@field Toons table<string, SavedInstances.Wrath.Toon> Keyed by "Toon - Realm".
+---@field Toons table<string, SavedInstances.Toon> Keyed by "Toon - Realm".
 ---@field spelltip table<number, string[]> Keyed by SpellID is any array of strings corresponding to the lines for the spells buff/debuff tooltip.
----@field Quests table<number, SavedInstances.Wrath.Toon.Quest> Account-wide quests keyed by QuestID. Sames struct as `Toon.Quests`. 
+---@field Quests table<number, SavedInstances.Toon.Quest> Account-wide quests keyed by QuestID. Sames struct as `Toon.Quests`. 
 ---@field QuestDB table<SavedInstances.QuestDBQuestType, {expires?: number, [number]: number}> Permanent repeatable quest DBs each keyed by questID mapping to the quest's turnin location's mapID
 ---@field Warfront table? Unused in Wrath. todo define class `SavedInstances.DB.Warfront` using comment in defaultDB
 ---@field Emmisary table? Unused in Wrath. todo define class and subClasses `SavedInstances.DB.Emmisary` using comment in defaultDB
 ---@field RealmMap {[string]: number, [number]: string[]} Used to track connected realms. Keying by realm name returns an index. Keying by this index returns a table of connected realms.
----@field Instances table<string, SavedInstances.Wrath.DB.Instance.Entry> Keyed by instance's lfg name. 
+---@field Instances table<string, SavedInstances.DB.Instance.Entry> Keyed by instance's lfg name. 
 ---@field DailyResetTime number? Unix timestamp in seconds of the next daily reset.
 ---@field Progress {["Enable"]: table<string, boolean>, ["Order"]: table<string, number>, ["User"]: table}
 SI.defaultDB = {
@@ -381,7 +396,7 @@ SI.defaultDB = {
   History = { 
     -- key: instance string; value: time first entered
   },
-  ---@see SavedInstances.Wrath.Toon 
+  ---@see SavedInstances.Toon 
   Toons = { 
     -- [Toon Name] = {
       -- Class: string
@@ -531,7 +546,7 @@ SI.defaultDB = {
       -- }
     --}
   },
-  ---@enum SavedInstances.IndicatorFormatters
+  ---@class SavedInstances.IndicatorFormatters
   Indicators = {
     D1Indicator = "BLANK", -- indicator: ICON_*, BLANK
     D1Text = "KILLED/TOTAL",
@@ -582,7 +597,7 @@ SI.defaultDB = {
     R8Color = { 1, 0, 0 }, -- red
     R8ClassColor = true,
   },
-  ---@class SavedInstances.Wrath.TooltipUserOptionsStore
+  ---@class SavedInstances.TooltipUserOptionsStore
   Tooltip = {
     posy = nil, ---@type number?
     posx = nil, ---@type number?
@@ -740,12 +755,12 @@ end
 
 -- general helper functions below
 
-local function ColorCodeOpenRGB(r,g,b,a)
+local function _startColorEscape(r,g,b,a)
   return format("|c%02x%02x%02x%02x", math.floor(a * 255), math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
 end
 
-local function ColorCodeOpen(color)
-  return ColorCodeOpenRGB(color[1] or color.r,
+local function startColorEscape(color)
+  return _startColorEscape(color[1] or color.r,
     color[2] or color.g,
     color[3] or color.b,
     color[4] or color.a or 1)
@@ -757,7 +772,7 @@ local function ClassColorise(class, targetstring)
   if c.colorStr then
     c = "|c"..c.colorStr
   else
-    c = ColorCodeOpen( c )
+    c = startColorEscape( c )
   end
   return c .. targetstring .. FONTEND
 end
@@ -893,7 +908,7 @@ SI.transInstance = {
 --- We use the latter name to key our database, and this function to convert as needed
 ---@param name string? localized instance name.
 ---@param isRaid boolean? true if the instance is a raid.
----@return string? instanceKey Instance name, as used for a key in the `SavedInstances.Wrath.DB.Instances` table.
+---@return string? instanceKey Instance name, as used for a key in the `SavedInstances.DB.Instances` table.
 ---@return number? lfgDungeonID Instance's associated [LfgDungeonID](https://warcraft.wiki.gg/wiki/LfgDungeonID).
 function SI:FindInstance(name, isRaid)
   if not name or #name == 0 then return nil end
@@ -903,7 +918,7 @@ function SI:FindInstance(name, isRaid)
   -- (why not use the normalized name as a key for this table?)
   local instanceEntry = SI.db.Instances[name]
   if instanceEntry then
-    return name, instanceEntry.LFDID
+    return name, instanceEntry.lfgDungeonID
   end
 
   -- hyperlink id lookup: must precede substring match for ticket 99
@@ -932,34 +947,35 @@ function SI:FindInstance(name, isRaid)
     or normalizedName:find(cachedInstanceName, 1, true)) 
     and instanceInfo.Raid == isRaid then -- Tempest Keep: The Botanica
       -- SI:Debug("FindInstance("..name..") => "..truename)
-      return cachedInstanceKey, instanceInfo.LFDID
+      return cachedInstanceKey, instanceInfo.lfgDungeonID
     end
   end
   return nil
 end
 
 --- Provide either id or name and raid status to get the instance's key and entry from `SI.db.Instances`.
----@param id number? [LfgDungeonID](https://warcraft.wiki.gg/wiki/LfgDungeonID).
+---@param dungeonID number? [LfgDungeonID](https://warcraft.wiki.gg/wiki/LfgDungeonID).
 ---@param instanceName string? localized instance name.
 ---@param isRaid boolean?
 ---@return string? instanceKey
----@return SavedInstances.Wrath.DB.Instance.Entry|{} instanceEntry empty table or tableref to `SI.db.Instances[instanceKey]`
-function SI:LookupInstance(id, instanceName, isRaid)
+---@return SavedInstances.DB.Instance.Entry|{} instanceEntry empty table or tableref to `SI.db.Instances[instanceKey]`
+function SI:LookupInstance(dungeonID, instanceName, isRaid)
   -- SI:Debug("LookupInstance("..(id or "nil")..","..(name or "nil")..","..(raid and "true" or "false")..")")
   ---@type string?
-  local key, entry = nil, {}
+  local normalizedName, entry = nil, {}
   if instanceName then
-    key, id = SI:FindInstance(instanceName, isRaid)
+    --- Get any normalized name and the associated LFGDungeonID
+    normalizedName, dungeonID = SI:FindInstance(instanceName, isRaid)
   end
-  if id then
-    key = SI:UpdateInstance(id)
+  if dungeonID then -- either found or passed
+    normalizedName = SI:UpdateInstance(dungeonID)
   end
-  if key then
-    entry = SI.db.Instances[key]
+  if normalizedName then
+    entry = SI.db.Instances[normalizedName]
   end
   if not entry then
     SI:Debug("LookupInstance() failed to find instance: "
-      ..(instanceName or "")..":"..(id or 0).." : "..GetLocale()
+      ..(instanceName or "")..":"..(dungeonID or 0).." : "..GetLocale()
     )
     SI.warned = SI.warned or {}
     if not SI.warned[instanceName] then
@@ -977,7 +993,7 @@ function SI:LookupInstance(id, instanceName, isRaid)
     entry = {}
     --SI.db.Instances[name] = instance
   end
-  return key, entry
+  return normalizedName, entry
 end
 
 function SI:InstanceCategory(instance)
@@ -1011,7 +1027,8 @@ function SI:CategorySize(category)
   return i
 end
 
-local _instance_exceptions = {
+---@type table<number, integer[]|integer> maps lfgDungeonID to either; a list npcIDs for the encounters of the instance, or a number that is total num of encounters.
+local exceptionData = {
   -- workaround a Blizzard bug:
   -- since 5.0, some old raid lockout tooltips are missing boss kill info
   -- currently affects 25+ man BC/Vanilla raids (but not Kara or AQ Ruins, go figure)
@@ -1096,58 +1113,106 @@ local _instance_exceptions = {
     25741, -- M'uru
     25315, -- Kil'jaeden
   },
-  [1347] = { total=8 }, -- Return to Karazhan
-  [1701] = { total=4 }, -- Siege of Boralus
+  [1347] = 8, -- Return to Karazhan
+  [1701] = 4, -- Siege of Boralus
 }
 
-function SI:instanceException(LFDID)
-  if not LFDID then return nil end
-  local exc = _instance_exceptions[LFDID]
-  if exc then -- localize boss names
-    local total = 0
-    for idx, id in ipairs(exc) do
-      if type(id) == "number" then
+local localizedExceptions = (function()
+  --- parse execptions for localized bossnames via scraping a unit link tooltip. 
+  ---@type {[integer]: {[integer]: string, total: integer}}
+  local exceptions = {}
+  for dungeonID, encounters in pairs(exceptionData) do
+    exceptions[dungeonID] = {}
+    if type(encounters) == "table" then
+      for idx, npcID in ipairs(encounters) do
+        -- localize boss names
         SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
-        SI.ScanTooltip:SetHyperlink(("unit:Creature-0-0-0-0-%d:0000000000"):format(id))
-        SI.ScanTooltip:Show()
+        SI.ScanTooltip:SetHyperlink(("unit:Creature-0-0-0-0-%d-0000000000"):format(npcID))
+        SI.ScanTooltip:Show()  
         local line = _G[SI.ScanTooltip:GetName().."TextLeft1"]
-        line = line and line:GetText()
+        line = line and line:GetText() ---@type string?
         if line and #line > 0 then
-          exc[idx] = line
+          exceptions[dungeonID][idx] = line
         end
       end
-      total = total + 1
-    end
-    exc.total = exc.total or total
+      exceptions[dungeonID].total = #encounters
+      return exceptions
+    else -- type == "number"
+      exceptions[dungeonID].total = encounters
+      return exceptions
+    end 
   end
-  return exc
-end
+end)()
+---Returns string array of localized encounter boss names with `total` field.
+---@param LFDID number
+---@return {total: integer, [integer]: string}? encounters
+function SI:instanceException(LFDID)
+  if not LFDID then return nil end
+  return localizedExceptions[LFDID]
+  -- local encounters = exceptionData[LFDID]
+  -- local total
+  -- if type(encounters) == "table" then 
+  --   total = #encounters
+  --   for idx, npcID in ipairs(encounters) do
+  --     -- localize boss names
+  --       SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
+  --       SI.ScanTooltip:SetHyperlink(("unit:Creature-0-0-0-0-%d:0000000000"):format(npcID))
+  --       SI.ScanTooltip:Show()  
+  --       local line = _G[SI.ScanTooltip:GetName().."TextLeft1"]
+  --       line = line and line:GetText()
+  --       if line and #line > 0 then
+  --         encounters[idx] = line
+  --       end
+  --     end
+  --   end
+  --   encounters.total = encounters.total or total
+  --   return encounters
+  end
 
-function SI:instanceBosses(instance,toon,diff)
-  local killed,total,base = 0,0,1
-  local remap, origin
-  local inst = SI.db.Instances[instance]
-  local save = inst and inst[toon] and inst[toon][diff]
-  if inst.WorldBoss then
-    return (save[1] and 1 or 0), 1, 1
+---get the boss encounter progress for a given instance, toon, and difficulty
+---@param instanceKey string
+---@param toon string
+---@param difficultyID number
+---@return integer completed
+---@return integer total
+---@return integer base 
+---@return table? remap
+---@return table? origin
+function SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
+  local instance = SI.db.Instances[instanceKey]
+  local lockoutInfo = instance and instance[toon] and instance[toon][difficultyID]
+  --- going forward i want to try to colect this data before hand, and calculate it as a last resort. Ideally it should be cached and ready for when the tooltip is show and this function is called.
+  
+  if lockoutInfo and lockoutInfo.numEncounters and lockoutInfo.numCompleted then
+    ---@diagnostic disable-next-line: undefined-field
+    return lockoutInfo.numEncounters, lockoutInfo.numCompleted, 1, lockoutInfo.remap, lockoutInfo.origin
   end
-  if not inst or not inst.LFDID then return 0,0,1 end
-  local exc = SI:instanceException(inst.LFDID)
-  total = (exc and exc.total) or GetLFGDungeonNumEncounters(inst.LFDID)
-  local LFR = SI.LFRInstances[inst.LFDID]
+
+  local killed, total, base = 0, 0, 1
+  local remap, origin
+  if instance.WorldBoss then
+    -- World bosses are treated as encounter 1 of an LFR lockout
+    local isKilled = lockoutInfo and lockoutInfo[1]
+    return (isKilled and 1 or 0), 1, 1, nil
+  end
+  if not instance or not instance.lfgDungeonID then return 0,0,1 end
+  local exception = SI:instanceException(instance.lfgDungeonID)
+  --- in classic era `GetLFGDungeonNumEncounters` returns 0. 
+  total = (exception and exception.total) or GetLFGDungeonNumEncounters(instance.lfgDungeonID)
+  local LFR = SI.LFRInstances[instance.lfgDungeonID]
   if LFR then
     total = LFR.total or total
     base = LFR.base or base
     remap = LFR.remap
     origin = LFR.origin
   end
-  if not save then
+  if not lockoutInfo then
     return killed, total, base, remap, origin
-  elseif save.Link then
-    local bits = save.Link:match(":(%d+)\124h")
+  elseif lockoutInfo.Link then
+    local bits = lockoutInfo.Link:match(":(%d+)\124h")
     bits = bits and tonumber(bits)
     if bits then
-      if inst.LFDID == 1944 then
+      if instance.lfgDungeonID == 1944 then
         -- Battle of Dazar'alor
         -- https://github.com/SavedInstances/SavedInstances/issues/233
         if SI.db.Toons[toon].Faction == "Alliance" then
@@ -1163,11 +1228,13 @@ function SI:instanceBosses(instance,toon,diff)
         bits = bit.rshift(bits,1)
       end
     end
-  elseif save.ID < 0 then
-    for i=1,-1*save.ID do
-      killed = killed + (save[i] and 1 or 0)
+  ---Set to `-1` for non-raid lockouts, and `-1*numBosses` for LFR wings.
+  elseif lockoutInfo.ID < 0 then
+    for i=1,-1*lockoutInfo.ID do
+      killed = killed + (lockoutInfo[i] and 1 or 0)
     end
   end
+  total = max(total, killed) -- incase no total is found. assume most killed is total. 
   return killed, total, base, remap, origin
 end
 
@@ -1177,8 +1244,8 @@ local function instanceSort(i1, i2)
   local instance2 = SI.db.Instances[i2]
   local level1 = instance1.RecLevel or 0
   local level2 = instance2.RecLevel or 0
-  local id1 = instance1.LFDID or instance1.WorldBoss or 0
-  local id2 = instance2.LFDID or instance2.WorldBoss or 0
+  local id1 = instance1.lfgDungeonID or instance1.WorldBoss or 0
+  local id2 = instance2.lfgDungeonID or instance2.WorldBoss or 0
   local key1 = level1*1000000+id1
   local key2 = level2*1000000+id2
   if i1:match(lfrkey) then key1 = key1 - 20000 end
@@ -1208,7 +1275,6 @@ function SI:OrderedInstances(category)
   return instances
 end
 
-SI.oc_cache = {} ---@type string[]
 --- Returns a table in of the form `{ "category1", "category2", ... }` containing instance categories for valid expansions. Uses the table `SI.oc_cache` as a cache.
 --- @return string[] 
 function SI:OrderedCategories()
@@ -1216,12 +1282,12 @@ function SI:OrderedCategories()
   local orderedlist = { }
   local firstexpansion, lastexpansion, expansionstep, firsttype, lasttype
   if SI.db.Tooltip.NewFirst then
-    firstexpansion = maxExpansion
+    firstexpansion = MAX_EXPANSION
     lastexpansion = 0
     expansionstep = -1
   else
     firstexpansion = 0
-    lastexpansion = maxExpansion
+    lastexpansion = MAX_EXPANSION
     expansionstep = 1
   end
   if SI.db.Tooltip.RaidsFirst then
@@ -1231,6 +1297,7 @@ function SI:OrderedCategories()
     firsttype = "D"
     lasttype = "R"
   end
+  SI:Debug("first %s | last %s | step %s", firstexpansion, lastexpansion, expansionstep)
   for i = firstexpansion, lastexpansion, expansionstep do
     table.insert(orderedlist, firsttype .. i)
     if SI.db.Tooltip.CategorySort == "EXPANSION" then
@@ -1246,71 +1313,92 @@ function SI:OrderedCategories()
   return orderedlist
 end
 
-local function DifficultyString(instance, diff, toon, expired, killoverride, totoverride)
-  local setting,color
-  if not instance then
-    setting = "D1"
+---Retrun formatted string for a lockouts encounter progress. ie "10/12H" for heroic lockout with 10 of 12 encounters completed.
+---@param instanceKey string key to `SI.db.Instances`
+---@param diffID number [DifficultyID](https://wow.gamepedia.com/DifficultyID)
+---@param toon string key to `SI.db.Toons`
+---@param isExpired boolean? true if the lockout is expired.
+---@param _kills number? override the number of boss kills to show on tooltip
+---@param _total number? override the total number of bosses shown on tooltip
+---@return string?
+local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _total)
+  local category, color
+  if not instanceKey then
+    category = "D1"
   else
-    local inst = SI.db.Instances[instance]
-    if not inst or not inst.Raid then -- 5-man
-      if diff == 2 then -- heroic
-        setting = "D2"
-    elseif diff == 23 then -- mythic
-      setting = "D3"
+    local instance = SI.db.Instances[instanceKey]
+    if not instance or not instance.Raid then -- 5-man
+      if diffID == 2 then -- heroic
+        category = "D2"
+    elseif diffID == 23 then -- mythic
+      category = "D3"
     else -- normal?
-      setting = "D1"
+      category = "D1"
     end
-    elseif inst.Expansion == 0 then -- classic raid
-      setting = "R0"
-    elseif diff >= 3 and diff <= 7 then -- pre-WoD raids
-      setting = "R"..(diff-2)
-    elseif diff >= 14 and diff <= 16 then -- WoD raids
-      setting = "R"..(diff-8)
-    elseif diff == 17 then -- Looking For Raid
-      setting = "R5"
+    elseif instance.Expansion == 0 then -- classic raid
+      category = "R0"
+    elseif diffID >= 3 and diffID <= 7 then -- pre-WoD raids
+      category = "R"..(diffID-2)
+    elseif diffID >= 14 and diffID <= 16 then -- WoD raids
+      category = "R"..(diffID-8)
+    elseif diffID == 17 then -- Looking For Raid
+      category = "R5"
     else -- don't know
-      setting = "D1"
+      category = "D1"
     end
   end
-  local prefs = SI.db.Indicators
-  local classcolor = prefs[setting .. "ClassColor"]
-  if classcolor == nil then
-    classcolor = SI.defaultDB.Indicators[setting .. "ClassColor"]
-  end
-  if expired then
+
+  local userIndicators = SI.db.Indicators
+  local defaultIndicators = SI.defaultDB.Indicators
+
+  local classColor = userIndicators[category .. "ClassColor"] ~= nil 
+                    and userIndicators[category .. "ClassColor"] 
+                    or defaultIndicators[category .. "ClassColor"]
+  SI:Debug("ClassColor? %s", classColor and "true" or 'nil')
+  if isExpired then
     color = GRAY_COLOR
-  elseif classcolor then
-    color = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS)[SI.db.Toons[toon].Class]
+  elseif classColor then
+    color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[SI.db.Toons[toon].Class]) 
+      or RAID_CLASS_COLORS[SI.db.Toons[toon].Class]
   else
-    prefs[setting.."Color"]  = prefs[setting.."Color"] or SI.defaultDB.Indicators[setting.."Color"]
-    color = prefs[setting.."Color"]
+    --- not sure what this here is for. why would the defualt be `nil`, if its a default just default it to be defined and this branch should never execute, because `classColor` will always be defined.
+    userIndicators[category.."Color"]  = userIndicators[category.."Color"] or defaultIndicators[category.."Color"]
+    color = userIndicators[category.."Color"]
   end
-  local text = prefs[setting.."Text"] or SI.defaultDB.Indicators[setting.."Text"]
-  local indicator = prefs[setting.."Indicator"] or SI.defaultDB.Indicators[setting.."Indicator"]
-  text = ColorCodeOpen(color) .. text .. FONTEND
-  if text:find("ICON", 1, true) and indicator ~= "BLANK" then
-    text = text:gsub("ICON", FONTEND .. SI.IndicatorIconTextures[indicator] .. ColorCodeOpen(color))
+  ---@type "KILLED/TOTAL"|string
+  local progressText = userIndicators[category.."Text"] or defaultIndicators[category.."Text"]
+  local indicatorIcon = userIndicators[category.."Indicator"] or defaultIndicators[category.."Indicator"]
+  local displayStr = progressText
+
+  displayStr = (color.WrapTextInColorCode 
+    and color:WrapTextInColorCode(displayStr))
+    or (startColorEscape(color) .. displayStr .. FONTEND);
+  
+  -- if using a non blank icon add it to 
+  if displayStr:find("ICON", 1, true) and indicatorIcon ~= "BLANK" then
+    displayStr = displayStr:gsub("ICON", FONTEND .. SI.IndicatorIconTextures[indicatorIcon] .. startColorEscape(color))
   end
-  if text:find("KILLED", 1, true) or text:find("TOTAL", 1, true) then
+  if displayStr:find("KILLED", 1, true) or displayStr:find("TOTAL", 1, true) then
     local killed, total
-    if killoverride then
-      killed, total = killoverride, totoverride
+    if _kills then
+      killed, total = _kills, _total
     else
-      killed, total = SI:instanceBosses(instance,toon,diff)
+      killed, total = SI:GetInstanceEncounterProgress(instanceKey,toon,diffID)
+      SI:Debug("Encounter progress for %s on %s. %i out of %i", instanceKey, toon, killed or -1, total or -1)
     end
     if killed == 0 and total == 0 then -- boss kill info missing
       killed = "*"
       total = "*"
-    elseif killed == 1 and total == 1 and not expired then
-      text = SI.questCheckMark
+    elseif killed == 1 and total == 1 and not isExpired then
+      displayStr = SI.questCheckMark
     end
-    text = text:gsub("KILLED",killed)
-    text = text:gsub("TOTAL",total)
+    displayStr = displayStr:gsub("KILLED",killed)
+    displayStr = displayStr:gsub("TOTAL", total or '*')
   end
-  return text
+  return displayStr
 end
 
--- Update our database (saved variables) with fresh instance info.
+-- Update saved variables db with fresh instance info.
 -- Updates data for all dungeonId's and worldBosses
 -- attempts to merge any character lockout data for any instances whos 
 -- static info has been changed (ie lfgDungeonID/encounterID/instanceKey)
@@ -1330,7 +1418,7 @@ function SI:UpdateInstanceData()
   --- previously we used GetFullRaidList() and LFDDungeonList to help populate the instance list
   --- Unfortunately those are loaded lazily, and forcing them to load from here can lead to taint.
   --- They are also somewhat incomplete, so instead we just brute force it, which is reasonably fast anyhow
-  for dungeonID = 1, maxDungeonID do
+  for dungeonID = 1, MAX_LFG_DUNGEON_ID do
     local instanceKey, isNewInstance, isBlacklist = SI:UpdateInstance(dungeonID)
     if isNewInstance then
       newInstanceCount = newInstanceCount + 1
@@ -1379,6 +1467,7 @@ function SI:UpdateInstanceData()
           Holiday = boss.holiday,
           Random = boss.random,
           LFDID = boss.lfdid,
+          lfgDungeonID = boss.lfdid or 0,
           Raid = true,
         }
       else
@@ -1403,8 +1492,8 @@ function SI:UpdateInstanceData()
     local freshInstanceKey ---@type string?
     if currentInstance.WorldBoss then
       freshInstanceKey = worldBossInstanceKeys[currentInstance.WorldBoss]
-    elseif currentInstance.LFDID then
-      freshInstanceKey = dungeonInstanceKeys[currentInstance.LFDID]
+    elseif currentInstance.lfgDungeonID then
+      freshInstanceKey = dungeonInstanceKeys[currentInstance.lfgDungeonID]
     else
       SI:Debug("Ignoring bogus entry in instance database: "..currentInstanceKey)
     end
@@ -1451,7 +1540,7 @@ function SI:UpdateInstanceData()
       end
     elseif not freshInstanceKey then -- if a new kew is not found
       -- and if missing becuase its been added the instance blacklist
-      if dungeonIdBlacklist[currentInstance.LFDID] then
+      if dungeonIdBlacklist[currentInstance.lfgDungeonID] then
         SI:Debug("Removing blacklisted entry in instance database: "
           ..currentInstanceKey
         )
@@ -1506,7 +1595,11 @@ function SI:UpdateInstance(dungeonID)
   local subtypeID = dungeonInfo[3] ---@type number 
 
   -- Recommended level to queue for this dungeon
-  local recLevel = dungeonInfo[6] ---@type number? 
+  local recLevel = dungeonInfo[6] ---@type number?
+  if not recLevel or recLevel == 0 then
+    local min, max = dungeonInfo[4], dungeonInfo[5]
+    if min and max then recLevel = (min + max) / 2 end
+  end
   -- Refers to `GetAccountExpansionLevel()` values
   local expansionLevel = dungeonInfo[9] ---@type number? 
   local difficultyID = dungeonInfo[12] ---@type number
@@ -1567,7 +1660,7 @@ function SI:UpdateInstance(dungeonID)
 
   -- ensure uniqueness (eg TeS LFR)
   if SI.LFRInstances[dungeonID] then 
-    local lfrDungeonID =  SI.db.Instances[lfgName] and SI.db.Instances[lfgName].LFDID
+    local lfrDungeonID =  SI.db.Instances[lfgName] and SI.db.Instances[lfgName].lfgDungeonID
     if lfrDungeonID and SI.LFRInstances[lfrDungeonID] then
       -- Clean LFR entry from `SI.db.Instances` table.
       -- should only exist in `SI.LFRInstances` 
@@ -1600,7 +1693,7 @@ function SI:UpdateInstance(dungeonID)
       " | "..(recLevel or "nil")..
       " | "..(maxPlayers or "nil")
     )
-    ---@type SavedInstances.Wrath.DB.Instance.Entry
+    ---@type SavedInstances.DB.Instance.Entry
     SI.db.Instances[lfgName] = {
       LFDID = dungeonID,
       lfgDungeonID = dungeonID,
@@ -1612,7 +1705,7 @@ function SI:UpdateInstance(dungeonID)
       Expansion = expansionLevel,
       WorldBoss = nil,
       Scenario = nil, -- or (subtypeID == LFG_SUBTYPEID_SCENARIO),
-    } 
+    }
   end
 
   -- the following code seems like it should be in the db compatability. Kept it coz unsure if its needed.
@@ -1697,7 +1790,7 @@ function SI:UpdateToonData()
     if (instance.Holiday and SI.activeHolidays[instanceKey]) 
       or (not instance.Holiday and instance.Random) 
     then
-      local dungeonID = instance.LFDID
+      local dungeonID = instance.lfgDungeonID
       GetLFGDungeonInfo(dungeonID) -- forces update
       
       -- doneToday, moneyBase, moneyVar, experienceBase, experienceVar, numRewards
@@ -1734,7 +1827,7 @@ function SI:UpdateToonData()
         -- ideally should used a `__index` metamethod to create table on demand if not found.
         instance[SI.thisToon] = instance[SI.thisToon] or {}
 
-        ---@type SavedInstances.Wrath.DB.Instance.LockoutInfo
+        ---@type SavedInstances.DB.Instance.LockoutInfo
         instance[SI.thisToon][difficultyID] = instance[SI.thisToon][difficultyID] or {
             Expires = nextDailyReset,
             ID = -1, -- default lockoutID for dungeons not in `/raidinfo`
@@ -1843,6 +1936,8 @@ function SI:UpdateToonData()
         toonData.DailyResetTime = (toonData.DailyResetTime and toonData.DailyResetTime + 24*3600) or nextDailyReset
       end
     end
+    ---@todo type out `Calling`
+    ---@diagnostic disable-next-line: undefined-field 
     if SI.isRetail and Calling then Calling:OnDailyReset() end
     currentToonData.DailyResetTime = nextDailyReset
     if not currentToonData.DailyResetTime or (currentToonData.DailyResetTime < time()) then -- AccountDaily reset
@@ -2106,7 +2201,7 @@ local function SI_OnQuestComplete()
   local mapID = SI:GetCurrentMapAreaID()
   propperQuestDB[questID] = mapID
 
-  ---@type SavedInstances.Wrath.Toon.Quest
+  ---@type SavedInstances.Toon.Quest
   local questInfo =  { 
     ["Title"] = questTitle, 
     ["Link"] = questLink,
@@ -2115,7 +2210,7 @@ local function SI_OnQuestComplete()
     ["Zone"] = C_Map.GetMapInfo(mapID) 
   }
   --- will use the `SI.db` instead of `toonData` if `isAccount` is true
-  ---@type SavedInstances.Wrath.Toon | SavedInstances.Wrath.DB
+  ---@type SavedInstances.Toon | SavedInstances.DB
   local toonOrAccountData = toonData
   if isAccount then
     toonOrAccountData = SI.db
@@ -2228,7 +2323,7 @@ end
 hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
   local toonFullName, questCount, isDaily = unpack(arg)
   local displayStr = questCount.." "..(isDaily and L["Daily Quests"] or L["Weekly Quests"])
-  ---@type SavedInstances.Wrath.Toon | SavedInstances.Wrath.DB
+  ---@type SavedInstances.Toon | SavedInstances.DB
   local targetDB = SI.db
   local scopeStr = L["Account"]
   local reset
@@ -2668,13 +2763,13 @@ hoverTooltip.ShowLFRTooltip = function (cell, arg, ...)
       indicatortip:SetCell(indicatortip:AddLine(), 1, YELLOWFONT .. instance .. FONTEND,nil, "CENTER",3)
       local thisinstance = SI.db.Instances[instance]
       local info = thisinstance[toon] and thisinstance[toon][diff]
-      local killed, total, base, remap, origin = SI:instanceBosses(instance,toon,diff)
+      local killed, total, base, remap, origin = SI:GetInstanceEncounterProgress(instance,toon,diff)
       for i = base, (base + total - 1) do
         local bossid = i
         if remap then
           bossid = remap[i-base+1]
         end
-        local bossname = GetLFGDungeonEncounterInfo(thisinstance.LFDID, bossid)
+        local bossname = GetLFGDungeonEncounterInfo(thisinstance.lfgDungeonID, bossid)
         local n = indicatortip:AddLine()
         indicatortip:SetCell(n, 1, bossname, nil,"LEFT", 2)
         -- for LFRs that are different between two factions
@@ -2691,46 +2786,44 @@ hoverTooltip.ShowLFRTooltip = function (cell, arg, ...)
 end
 
 hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
-  DevTool:AddData(arg, "arg table")
-  DevTool:AddData(SI.db.Instances, "SI.db.Instances")
-  local instance = arg[1]
+  local instanceKey = arg[1]
   local toon = arg[2]
-  local diff = arg[3]
-  if not instance or not toon or not diff then return end
-  local indicatortip = Tooltip:AcquireIndicatorTip(3, "LEFT", "LEFT","RIGHT")
-  local thisinstance = SI.db.Instances[instance]
-  local worldboss = thisinstance and thisinstance.WorldBoss
-  local info = thisinstance[toon][diff]
-  if not info then return end
-  local id = info.ID or 0
-  local nameline = indicatortip:AddHeader()
-  indicatortip:SetCell(nameline, 1, DifficultyString(instance, diff, toon), indicatortip:GetHeaderFont(), "LEFT", 1)
-  indicatortip:SetCell(nameline, 2, GOLDFONT .. instance .. FONTEND, indicatortip:GetHeaderFont(), "RIGHT", 2)
-  local toonline = indicatortip:AddHeader()
+  local difficultyID = arg[3]
+  if not instanceKey or not toon or not difficultyID then return end
+  local indicatorTip = Tooltip:AcquireIndicatorTip(3, "LEFT", "LEFT","RIGHT")
+  local instance = SI.db.Instances[instanceKey]
+  local worldboss = instance and instance.WorldBoss
+  local lockoutInfo = instance[toon][difficultyID]
+  if not lockoutInfo then return end
+  local id = lockoutInfo.ID or 0
+  local cellHeader = indicatorTip:AddHeader()
+  indicatorTip:SetCell(cellHeader, 1, DifficultyString(instanceKey, difficultyID, toon), indicatorTip:GetHeaderFont(), "LEFT", 1)
+  indicatorTip:SetCell(cellHeader, 2, GOLDFONT .. instanceKey .. FONTEND, indicatorTip:GetHeaderFont(), "RIGHT", 2)
+  local toonline = indicatorTip:AddHeader()
   local toonstr = (SI.db.Tooltip.ShowServer and toon) or strsplit(' ', toon)
-  indicatortip:SetCell(toonline, 1, ClassColorise(SI.db.Toons[toon].Class, toonstr), indicatortip:GetHeaderFont(), "LEFT", 1)
-  indicatortip:SetCell(toonline, 2, SI:idtext(thisinstance,diff,info),nil, "RIGHT", 2)
+  indicatorTip:SetCell(toonline, 1, ClassColorise(SI.db.Toons[toon].Class, toonstr), indicatorTip:GetHeaderFont(), "LEFT", 1)
+  indicatorTip:SetCell(toonline, 2, SI:idtext(instance,difficultyID,lockoutInfo),nil, "RIGHT", 2)
   local EMPH = " !!! "
-  if info.Extended then
-    indicatortip:SetCell(indicatortip:AddLine(),1,WHITEFONT .. EMPH .. L["Extended Lockout - Not yet saved"] .. EMPH .. FONTEND,nil,"CENTER",3)
-  elseif info.Locked == false and id > 0 then
-    indicatortip:SetCell(indicatortip:AddLine(),1,WHITEFONT .. EMPH .. L["Expired Lockout - Can be extended"] .. EMPH .. FONTEND,nil,"CENTER",3)
+  if lockoutInfo.Extended then
+    indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT .. EMPH .. L["Extended Lockout - Not yet saved"] .. EMPH .. FONTEND,nil,"CENTER",3)
+  elseif lockoutInfo.Locked == false and id > 0 then
+    indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT .. EMPH .. L["Expired Lockout - Can be extended"] .. EMPH .. FONTEND,nil,"CENTER",3)
   end
-  if info.Expires > 0 then
-    indicatortip:AddLine(YELLOWFONT .. L["Time Left"] .. ":" .. FONTEND, nil, SecondsToTime(thisinstance[toon][diff].Expires - time()))
+  if lockoutInfo.Expires > 0 then
+    indicatorTip:AddLine(YELLOWFONT .. L["Time Left"] .. ":" .. FONTEND, nil, SecondsToTime(instance[toon][difficultyID].Expires - time()))
   end
   if id > 0 and (
-    (thisinstance.Raid and (diff == 5 or diff == 6 or diff == 16)) -- raid: 10 heroic, 25 heroic or mythic
+    (instance.Raid and (difficultyID == 5 or difficultyID == 6 or difficultyID == 16)) -- raid: 10 heroic, 25 heroic or mythic
     or
-    (diff == 23) -- mythic 5-man
+    (difficultyID == 23) -- mythic 5-man
     ) then
-    local n = indicatortip:AddLine()
-    indicatortip:SetCell(n, 1, YELLOWFONT .. ID .. ":" .. FONTEND,nil, "LEFT", 1)
-    indicatortip:SetCell(n, 2, id,nil, "RIGHT", 2)
+    local n = indicatorTip:AddLine()
+    indicatorTip:SetCell(n, 1, YELLOWFONT .. ID .. ":" .. FONTEND,nil, "LEFT", 1)
+    indicatorTip:SetCell(n, 2, id,nil, "RIGHT", 2)
   end
-  if info.Link then
-    local link = info.Link
-    if thisinstance.LFDID == 1944 then
+  if lockoutInfo.Link then
+    local link = lockoutInfo.Link
+    if instance.lfgDungeonID == 1944 then
       -- Battle of Dazar'alor
       -- https://github.com/SavedInstances/SavedInstances/issues/233
       local locFaction = UnitFactionGroup("player")
@@ -2754,49 +2847,49 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
           end
         end
         link = "\124cffff8000\124Hinstancelock:Player-0000-00000000:2070:"
-          .. diff .. ":" .. bits .. "\124h[Battle of Dazar'alor]\124h\124r"
+          .. difficultyID .. ":" .. bits .. "\124h[Battle of Dazar'alor]\124h\124r"
       end
     end
     SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
-    -- print(link)
-    -- SI.ScanTooltip:SetHyperlink(link)
+    --bugfix: `instanceinfo` link type not avail in either classic or wotlk
+    if SI.isRetail then SI.ScanTooltip:SetHyperlink(link) end
     SI.ScanTooltip:Show()
     local name = SI.ScanTooltip:GetName()
-    local gotbossinfo
+    local isTooltipParsed
     for i=2,SI.ScanTooltip:NumLines() do
       local left,right = _G[name.."TextLeft"..i], _G[name.."TextRight"..i]
       if right and right:GetText() then
-        local n = indicatortip:AddLine()
-        indicatortip:SetCell(n, 1, coloredText(left),nil, "LEFT", 2)
-        indicatortip:SetCell(n, 3, coloredText(right),nil, "RIGHT", 1)
-        gotbossinfo = true
+        local n = indicatorTip:AddLine()
+        indicatorTip:SetCell(n, 1, coloredText(left),nil, "LEFT", 2)
+        indicatorTip:SetCell(n, 3, coloredText(right),nil, "RIGHT", 1)
+        isTooltipParsed = true
       else
-        indicatortip:SetCell(indicatortip:AddLine(),1,coloredText(left),nil,"CENTER",3)
+        indicatorTip:SetCell(indicatorTip:AddLine(),1,coloredText(left),nil,"CENTER",3)
       end
     end
-    if not gotbossinfo then
-      local exc = SI:instanceException(thisinstance.LFDID)
+    if not isTooltipParsed then
+      local exceptions = SI:instanceException(instance.lfgDungeonID)
       local bits = tonumber(link:match(":(%d+)\124h"))
-      if exc and bits then
-        for i=1,exc.total do
-          local n = indicatortip:AddLine()
-          indicatortip:SetCell(n, 1, exc[i],nil, "LEFT", 2)
+      if exceptions and bits then
+        for i=1,exceptions.total do
+          local lineIdx = indicatorTip:AddLine()
+          indicatorTip:SetCell(lineIdx, 1, exceptions[i], nil, "LEFT", 2)
           local text = "\124cff00ff00"..BOSS_ALIVE.."\124r"
           if bit.band(bits,1) > 0 then
             text = "\124cffff1f1f"..BOSS_DEAD.."\124r"
           end
-          indicatortip:SetCell(n, 3, text,nil, "RIGHT", 1)
+          indicatorTip:SetCell(lineIdx, 3, text,nil, "RIGHT", 1)
           bits = bit.rshift(bits,1)
         end
       else
-        indicatortip:SetCell(indicatortip:AddLine(),1,WHITEFONT ..
+        indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT ..
           L["Boss kill information is missing for this lockout.\nThis is a Blizzard bug affecting certain old raids."] ..
           FONTEND,nil,"CENTER",3)
       end
     end
   end
   if id < 0 then
-    local killed, total, base, remap = SI:instanceBosses(instance,toon,diff)
+    local killed, total, base, remap = SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
     for i=base,base+total-1 do
       local bossid = i
       if remap then
@@ -2806,18 +2899,18 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
       if worldboss then
         bossname = SI.WorldBosses[worldboss].name or "UNKNOWN"
       else
-        bossname = GetLFGDungeonEncounterInfo(thisinstance.LFDID, bossid)
+        bossname = GetLFGDungeonEncounterInfo(instance.lfgDungeonID, bossid)
       end
-      local n = indicatortip:AddLine()
-      indicatortip:SetCell(n, 1, bossname,nil, "LEFT", 2)
-      if info[bossid] then
-        indicatortip:SetCell(n, 3, REDFONT..ALREADY_LOOTED..FONTEND,nil, "RIGHT", 1)
+      local n = indicatorTip:AddLine()
+      indicatorTip:SetCell(n, 1, bossname,nil, "LEFT", 2)
+      if lockoutInfo[bossid] then
+        indicatorTip:SetCell(n, 3, REDFONT..ALREADY_LOOTED..FONTEND,nil, "RIGHT", 1)
       else
-        indicatortip:SetCell(n, 3, GREENFONT..AVAILABLE..FONTEND,nil, "RIGHT", 1)
+        indicatorTip:SetCell(n, 3, GREENFONT..AVAILABLE..FONTEND,nil, "RIGHT", 1)
       end
     end
   end
-  indicatortip:Show()
+  indicatorTip:Show()
 end
 
 hoverTooltip.ShowSpellIDTooltip = function (cell, arg, ...)
@@ -3020,7 +3113,7 @@ function SI:toonInit()
       -- Covenant = C_Covenants.GetActiveCovenantID(),
       -- MythicPlusScore = C_ChallengeMode.GetOverallDungeonScore(),
       -- Warmode = C_PvP.IsWarModeDesired(),
-    } --[[@as SavedInstances.Wrath.Toon]]
+    } --[[@as SavedInstances.Toon]]
   end
 
   local toonData = SI.db.Toons[SI.thisToon] or {}
@@ -3052,6 +3145,7 @@ function SI:OnInitialize()
   SI.version = versionString
 
   -- Get SavedVars or set to defaultDB
+  ---@class SavedInstances.DB
   SavedInstancesDB = SavedInstancesDB or SI.defaultDB
 
   -- begin any database migrations
@@ -3076,6 +3170,7 @@ elseif SavedInstancesDB.DBVersion < 12 then
   -- end backwards compatibilty
   
   -- preserve db if function is ran while `SI.db` is still in scope
+  ---@class SavedInstances.DB
   SI.db = SI.db or SavedInstancesDB
   SI:toonInit()
 
@@ -3310,7 +3405,7 @@ function SI:CheckSystemMessage(event, msg)
   end
 end
 --- Update the connected realms table.
----@see SavedInstances.Wrath.DB.RealmMap
+---@see SavedInstances.DB.RealmMap
 function SI:updateRealmMap()
   -- normalize realm name by removing whitespace
   -- local realm = GetRealmName():gsub("%s+","")
@@ -3370,7 +3465,7 @@ end
 --- @param difficultyID number
 --- @param soft boolean?
 function SI:BossRecord(toon, bossName, difficultyID, soft)
-  ---@type SavedInstances.Wrath.Toon
+  ---@type SavedInstances.Toon
   local toonData = SI.db.Toons[toon]
   if not toonData then return end
   local now = time()
@@ -3583,7 +3678,7 @@ function SI:histZoneKey()
   
   --- check if current toon locked to *any* difficulty.
   -- (not sure what the purpose of this code is)
-  for _difficultyID = 1, maxDifficultyID do
+  for _difficultyID = 1, MAX_DIFFICULTY_ID do
     if instanceLockouts[_difficultyID] 
       and instanceLockouts[_difficultyID].Locked 
     then
@@ -3617,7 +3712,9 @@ end
 ---@param forceReset boolean? force a reset of the instance history
 ---@param forceMsg boolean? force a chat message to be sent
 function SI:HistoryUpdate(forceReset, forceMsg)
-  -- SI.db.histGeneration = SI.db.histGeneration or 1 -- Defualt set on db construction
+  -- Default value *should* be set on default db construction for each character
+  -- but it sometimes is nil. bug?
+  SI.db.histGeneration = SI.db.histGeneration or 1
   
   local now = time()
   local histKey, zoneDescr, isPlayerLocked = SI:histZoneKey()
@@ -3722,7 +3819,7 @@ function SI:HistoryUpdate(forceReset, forceMsg)
 end
 
 --- function used to manage throttling of the tooltip text updating.
----@param self SavedInstances.Wrath
+---@param self SavedInstances
 ---@param elap number time elapsed since last update
 function SI.histTextUpdate(self, elap)
   SI.histTextthrottle = SI.histTextthrottle - elap
@@ -3853,7 +3950,7 @@ function SI:Refresh(recoverDailies)
   
   -- clear current toons lockouts before refresh
   for key, lockouts in pairs(SI.db.Instances) do 
-    local dungeonID = lockouts.LFDID
+    local dungeonID = lockouts.lfgDungeonID
     if lockouts[SI.thisToon]
     -- disabled for ticket 178/195:
     --and not (id and SI.LFRInstances[id] and select(2,GetLFGDungeonNumEncounters(id)) == 0) -- ticket 103
@@ -3866,46 +3963,43 @@ function SI:Refresh(recoverDailies)
     end
   end
 
-  -- repopulate lockout info using `GetSavedInstanceInfo`
+--- Re-populate lockout info using `GetSavedInstanceInfo`, this info is stored in saved vars. 
   local numSaved = GetNumSavedInstances()
+  SI:Debug("Refresh: "..numSaved.." instances")
   if numSaved > 0 then
     for i = 1, numSaved do
       local name, lockoutID, lockoutDuration, diffID, isLocked,
-        isExtended, mostsig, isRaid, players, altName = GetSavedInstanceInfo(i)
-        
-      local resetTimestamp = lockoutDuration and (lockoutDuration + time()) or 0
+        isExtended, _, isRaid, maxPlayers, 
+        diffName, numEncounters, numCompleted = GetSavedInstanceInfo(i)
+      ---@type {localizedName: string, isCompleted: boolean}[]
+      local encounters = {}
+      for j = 1, numEncounters do
+        local bossName, _, isKilled = GetSavedInstanceEncounterInfo(i, j)
+        encounters[j] = { localizedName = bossName, isComplete = isKilled }
+      end
+      local lockoutExpiry = lockoutDuration and (lockoutDuration + time()) or 0
       local instanceKey, instanceEntry = SI:LookupInstance(nil, name, isRaid)
-      -- The instance entry could itself be a ref already or a fresh table but that is not reference to the db. i dont like this, id rather nil be returned. and a new entry created on nil.
-
-      -- instanceEntry.Raid = instanceEntry.Raid or isRaid
-      -- -- the table at `temp[instanceKey]` would have been wiped in the earlier loop.
-      -- -- why is it considered here?
-      -- instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or temp[instanceKey] or { }      
-      
-      -- local info = instanceEntry[SI.thisToon][diffID] or {}
-      -- wipe(info)
-      -- info.ID = lockoutID
-      -- info.Expires = lockoutDuration
-      -- info.Link = GetSavedInstanceChatLink(i)
-      -- info.Locked = isLocked
-      -- info.Extended = isExtended
-      -- instanceEntry[SI.thisToon][diffID] = info
-
-      --- alternative
+      -- SI:Debug("instanceKey %s | reset time %d ", instanceKey or "nil", lockoutExpiry or 69);
       if not instanceEntry.lfgDungeonID then -- ie unreferenced empty table returned
+        ---@cast instanceEntry SavedInstances.DB.Instance.Entry
         -- add ref for table in the db
         SI.db.Instances[instanceKey] = instanceEntry
         -- now local table can be modified and changes will be reflected in db
+        instanceEntry.lfgDungeonID = instanceEntry.lfgDungeonID
         instanceEntry.Raid = isRaid
       end
+      --- add this character into the instance entry's toon table
       instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or {}
-      local characterLockouts  = instanceEntry[SI.thisToon]
-      characterLockouts[diffID] = {
+      ---@type SavedInstances.DB.Instance.LockoutInfo
+      instanceEntry[SI.thisToon][diffID] = {
         ID = lockoutID,
-        Expires = lockoutDuration,
+        Expires = lockoutExpiry,
         Link = GetSavedInstanceChatLink(i),
         Locked = isLocked,
         Extended = isExtended,
+        encounters = encounters,
+        numEncounters = numEncounters,
+        numCompleted = numCompleted
       }
     end
   end
@@ -3962,6 +4056,8 @@ function SI:Refresh(recoverDailies)
   end
 
   SI:QuestRefresh(recoverDailies, nextDailyReset, nextWeeklyReset)
+  
+  ---@diagnostic disable-next-line: undefined-field
   if SI.isRetail and Warfront then Warfront:UpdateQuest() end -- not in wotlk
 
   -- not sure what the purpose of the follow code is
@@ -4186,6 +4282,7 @@ end
 
 local function ReportKeys(self, index, button)
   if SI.isRetail and MythicPlus then 
+    ---@diagnostic disable-next-line: undefined-field
     MythicPlus:Keys(index)
   end
 end
@@ -4269,51 +4366,65 @@ function SI:ShowTooltip(anchorframe)
   -- determining how many instances will be displayed per category
   local categoryshown = localarr("categoryshown") -- remember if each category will be shown
   local instancesaved = localarr("instancesaved") -- remember if each instance has been saved or not (boolean)
-  local wbcons = SI.db.Tooltip.CombineWorldBosses
-  local worldbosses = wbcons and localarr("worldbosses")
-  local wbalways = false
-  local lfrcons = SI.db.Tooltip.CombineLFR
-  local lfrbox = lfrcons and localarr("lfrbox")
-  local lfrmap = lfrcons and localarr("lfrmap")
-  for _, category in ipairs(SI:OrderedCategories()) do
-    for _, instance in ipairs(SI:OrderedInstances(category)) do
-      local inst = SI.db.Instances[instance]
-      if inst.Show == "always" then
+  local combineWBs = SI.db.Tooltip.CombineWorldBosses
+  local worldBosses = combineWBs and localarr("worldbosses")
+  local alwaysShowWB = false
+  local combineLFR = SI.db.Tooltip.CombineLFR
+  local lfrBox = combineLFR and localarr("lfrbox")
+  local lfrMap = combineLFR and localarr("lfrmap")
+  local orderedCategories = SI:OrderedCategories()
+  for _, category in ipairs(orderedCategories) do
+    SI:Debug("category %s",category)
+    for _, instanceKey in ipairs(SI:OrderedInstances(category)) do
+      local instanceEntry = SI.db.Instances[instanceKey]
+      if instanceEntry.Show == "always" then
         categoryshown[category] = true
       end
-      if inst.Show ~= "never" then
-        if worldbosses and inst.WorldBoss and inst.Expansion <= GetExpansionLevel() then
+      if instanceEntry.Show ~= "never" then
+        if worldBosses and instanceEntry.WorldBoss and instanceEntry.Expansion <= GetExpansionLevel() then
           if SI.db.Tooltip.ReverseInstances then
-            table.insert(worldbosses, instance)
+            table.insert(worldBosses, instanceKey)
           else
-            table.insert(worldbosses, 1, instance)
+            table.insert(worldBosses, 1, instanceKey)
           end
-          wbalways = wbalways or (inst.Show == "always")
+          alwaysShowWB = alwaysShowWB or (instanceEntry.Show == "always")
         end
-        local lfrinfo = lfrcons and inst.LFDID and SI.LFRInstances[inst.LFDID]
-        local lfrboxid
-        if lfrinfo then
-          lfrboxid = lfrinfo.parent
-          lfrmap[inst.LFDID] = instance
-          if inst.Show == "always" then
-            lfrbox[lfrboxid] = true
+        local lfrInstance = combineLFR and instanceEntry.lfgDungeonID 
+                        and SI.LFRInstances[instanceEntry.lfgDungeonID]
+        local lfrBoxID
+        if lfrInstance then
+          lfrBoxID = lfrInstance.parent
+          lfrMap[instanceEntry.lfgDungeonID] = instanceKey
+          if instanceEntry.Show == "always" then
+            lfrBox[lfrBoxID] = true
           end
         end
+
+        -- still unsure about cpairs
         for toon, t in cpairs(SI.db.Toons, true) do
-          for diff = 1, maxDifficultyID do
-            if inst[toon] and inst[toon][diff] then
-              if (inst[toon][diff].Expires > 0) then
-                if lfrinfo then
-                  lfrbox[lfrboxid] = true
-                  instancesaved[lfrboxid] = true
-                elseif wbcons and inst.WorldBoss then
+          ---@cast toon string
+          for diffID = 1, MAX_DIFFICULTY_ID do
+            if instanceEntry[toon] and instanceEntry[toon][diffID] then
+              local expiry = instanceEntry[toon][diffID].Expires
+              if showall then 
+                categoryshown[category] = true
+              elseif not showall 
+                and (expiry > 0) 
+              then
+                categoryshown[category] = true
+
+                SI:Debug("Lockouts Found: %s - %s | expiry: %s " ,
+                toon, instanceEntry[toon][diffID].Link,
+                instanceEntry[toon][diffID].Expires )
+
+                if lfrInstance then
+                  lfrBox[lfrBoxID] = true
+                  instancesaved[lfrBoxID] = true
+                elseif combineWBs and instanceEntry.WorldBoss then
                   instancesaved[L["World Bosses"]] = true
                 else
-                  instancesaved[instance] = true
+                  instancesaved[instanceKey] = true
                 end
-                categoryshown[category] = true
-              elseif showall then
-                categoryshown[category] = true
               end
             end
           end
@@ -4324,8 +4435,8 @@ function SI:ShowTooltip(anchorframe)
   local categories = 0
   -- determining how many categories have instances that will be shown
   if SI.db.Tooltip.ShowCategories then
-    for category, _ in pairs(categoryshown) do
-      categories = categories + 1
+    for _, shown in pairs(categoryshown) do
+      if shown then categories = categories + 1 end
     end
   end
   -- allocating tooltip space for instances, categories, and space between categories
@@ -4341,7 +4452,7 @@ function SI:ShowTooltip(anchorframe)
       blankrow[line] = true
     end
   end
-  for _, category in ipairs(SI:OrderedCategories()) do
+  for _, category in ipairs(orderedCategories) do
     if categoryshown[category] then
       if SI.db.Tooltip.CategorySpaces then
         addsep()
@@ -4353,14 +4464,14 @@ function SI:ShowTooltip(anchorframe)
       end
       for _, instance in ipairs(SI:OrderedInstances(category)) do
         local inst = SI.db.Instances[instance]
-        if not (wbcons and inst.WorldBoss) and
-          not (lfrcons and SI.LFRInstances[inst.LFDID]) then
+        if not (combineWBs and inst.WorldBoss) and
+          not (combineLFR and SI.LFRInstances[inst.lfgDungeonID]) then
           if inst.Show == "always" then
             instancerow[instance] = instancerow[instance] or tooltip:AddLine()
           end
           if inst.Show ~= "never" then
             for toon, t in cpairs(SI.db.Toons, true) do
-              for diff = 1, maxDifficultyID do
+              for diff = 1, MAX_DIFFICULTY_ID do
                 if inst[toon] and inst[toon][diff] and (inst[toon][diff].Expires > 0 or showexpired) then
                   instancerow[instance] = instancerow[instance] or tooltip:AddLine()
                   addColumns(columns, toon, tooltip)
@@ -4369,12 +4480,12 @@ function SI:ShowTooltip(anchorframe)
             end
           end
         end
-        if lfrcons and inst.LFDID then
+        if combineLFR and inst.lfgDungeonID then
           -- check if this parent instance has corresponding lfrboxes, and create them
-          if lfrbox[inst.LFDID] then
-            lfrbox[L["LFR"]..": "..instance] = tooltip:AddLine()
+          if lfrBox[inst.lfgDungeonID] then
+            lfrBox[L["LFR"]..": "..instance] = tooltip:AddLine()
           end
-          lfrbox[inst.LFDID] = nil
+          lfrBox[inst.lfgDungeonID] = nil
         end
       end
     end
@@ -4384,19 +4495,19 @@ function SI:ShowTooltip(anchorframe)
     local inst = SI.db.Instances[instance]
     tooltip:SetCell(row, 1, (instancesaved[instance] and GOLDFONT or GRAYFONT) .. instance .. FONTEND)
     -- nil check for WoTLK
-    if SI.LFRInstances and SI.LFRInstances[inst.LFDID] then
-      tooltip:SetLineScript(row, "OnMouseDown", OpenLFR, inst.LFDID)
+    if SI.LFRInstances and SI.LFRInstances[inst.lfgDungeonID] then
+      tooltip:SetLineScript(row, "OnMouseDown", OpenLFR, inst.lfgDungeonID)
     end
     for toon, t in cpairs(SI.db.Toons, true) do
       if inst[toon] then
         local showcol = localarr("showcol")
         local showcnt = 0
-        for diff = 1, maxDifficultyID do
+        for diff = 1, MAX_DIFFICULTY_ID do
           if inst[toon][diff] and (inst[toon][diff].Expires > 0 or showexpired) then
             showcnt = showcnt + 1
             showcol[diff] = true
           end
-        end
+        end 
         local base = 1
         local span = maxcol
         if showcnt > 1 then
@@ -4405,24 +4516,24 @@ function SI:ShowTooltip(anchorframe)
         if showcnt > maxcol then
           SI:BugReport("Column overflow! showcnt="..showcnt)
         end
-        for diff = 1, maxDifficultyID do
-          if showcol[diff] then
+        for diffID = 1, MAX_DIFFICULTY_ID do
+          if showcol[diffID] then
             local col = columns[toon..base]
             tooltip:SetCell(row, col,
-              DifficultyString(instance, diff, toon, inst[toon][diff].Expires == 0),nil,nil, span)
-            tooltip:SetCellScript(row, col, "OnEnter", hoverTooltip.ShowIndicatorTooltip, {instance, toon, diff})
+              DifficultyString(instance, diffID, toon, inst[toon][diffID].Expires == 0),nil,nil, span)
+            tooltip:SetCellScript(row, col, "OnEnter", hoverTooltip.ShowIndicatorTooltip, {instance, toon, diffID})
             tooltip:SetCellScript(row, col, "OnLeave", CloseTooltips)
-            if SI.LFRInstances[inst.LFDID] then
-              tooltip:SetCellScript(row, col, "OnMouseDown", OpenLFR, inst.LFDID)
+            if SI.LFRInstances[inst.lfgDungeonID] then
+              tooltip:SetCellScript(row, col, "OnMouseDown", OpenLFR, inst.lfgDungeonID)
             else
-              local link = inst[toon][diff].Link
+              local link = inst[toon][diffID].Link
               if link then
                 tooltip:SetCellScript(row, col, "OnMouseDown", ChatLink, link)
               end
             end
             base = base + 1
-          elseif columns[toon..diff] and showcnt > 1 then
-            tooltip:SetCell(row, columns[toon..diff], "")
+          elseif columns[toon..diffID] and showcnt > 1 then
+            tooltip:SetCell(row, columns[toon..diffID], "")
           end
         end
       end
@@ -4430,33 +4541,33 @@ function SI:ShowTooltip(anchorframe)
   end
 
   -- combined LFRs
-  if lfrcons then
-    for boxname, line in pairs(lfrbox) do
+  if combineLFR then
+    for boxname, line in pairs(lfrBox) do
       if type(boxname) == "number" then
         SI:BugReport("Unrecognized LFR instance parent id= "..boxname)
-        lfrbox[boxname] = nil
+        lfrBox[boxname] = nil
       end
     end
-    for boxname, line in pairs(lfrbox) do
+    for boxname, line in pairs(lfrBox) do
       local boxtype, pinstance = boxname:match("^([^:]+): (.+)$")
       local pinst = SI.db.Instances[pinstance]
-      local boxid = pinst.LFDID
+      local boxid = pinst.lfgDungeonID
       local firstid
       local total = 0
       local flag = false -- flag for LFRs that are different between two factions
       local tbl, other = {}, {}
       for lfdid, lfrinfo in pairs(SI.LFRInstances) do
-        if lfrinfo.parent == pinst.LFDID and lfrmap[lfdid] then
+        if lfrinfo.parent == pinst.lfgDungeonID and lfrMap[lfdid] then
           if (not lfrinfo.faction) or (lfrinfo.faction == UnitFactionGroup("player")) then
             firstid = math.min(lfdid, firstid or lfdid)
           end
           if lfrinfo.faction and lfrinfo.faction == "Horde" then
             flag = true
-            other[lfrinfo.base] = lfrmap[lfdid]
+            other[lfrinfo.base] = lfrMap[lfdid]
           else
             -- count total bosses for only one faction
             total = total + lfrinfo.total
-            tbl[lfrinfo.base] = lfrmap[lfdid]
+            tbl[lfrinfo.base] = lfrMap[lfdid]
           end
         end
       end
@@ -4467,7 +4578,7 @@ function SI:ShowTooltip(anchorframe)
         local diff = 2
         local curr = (flag and t.Faction == "Horde") and other or tbl
         for key, instance in pairs(curr) do
-          saved = saved + SI:instanceBosses(instance, toon, diff)
+          saved = saved + SI:GetInstanceEncounterProgress(instance, toon, diff)
         end
         if saved > 0 then
           addColumns(columns, toon, tooltip)
@@ -4481,7 +4592,7 @@ function SI:ShowTooltip(anchorframe)
   end
 
   -- combined world bosses
-  if worldbosses and next(worldbosses) and (wbalways or instancesaved[L["World Bosses"]]) then
+  if worldBosses and next(worldBosses) and (alwaysShowWB or instancesaved[L["World Bosses"]]) then
     if SI.db.Tooltip.CategorySpaces then
       addsep()
     end
@@ -4489,7 +4600,7 @@ function SI:ShowTooltip(anchorframe)
     for toon, t in cpairs(SI.db.Toons, true) do
       local saved = 0
       local diff = 2
-      for _, instance in ipairs(worldbosses) do
+      for _, instance in ipairs(worldBosses) do
         local inst = SI.db.Instances[instance]
         if inst[toon] and inst[toon][diff] and inst[toon][diff].Expires > 0 then
           saved = saved + 1
@@ -4498,8 +4609,8 @@ function SI:ShowTooltip(anchorframe)
       if saved > 0 then
         addColumns(columns, toon, tooltip)
         local col = columns[toon..1]
-        tooltip:SetCell(line, col, DifficultyString(worldbosses[1], diff, toon, false, saved, #worldbosses),nil,nil,4)
-        tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowWorldBossTooltip, {worldbosses, toon, saved})
+        tooltip:SetCell(line, col, DifficultyString(worldBosses[1], diff, toon, false, saved, #worldBosses),nil,nil,4)
+        tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowWorldBossTooltip, {worldBosses, toon, saved})
         tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
       end
     end
@@ -4526,7 +4637,7 @@ function SI:ShowTooltip(anchorframe)
           end
           local tstr = SecondsToTime(d.Expires - time(), false, false, 1)
           tooltip:SetCell(row, columns[toon..1], ClassColorise(t.Class,tstr), nil,"CENTER",maxcol)
-          tooltip:SetLineScript(row, "OnMouseDown", OpenLFD, info.LFDID)
+          tooltip:SetLineScript(row, "OnMouseDown", OpenLFD, info.lfgDungeonID)
         end
       end
     end
@@ -4659,6 +4770,7 @@ function SI:ShowTooltip(anchorframe)
 
   if SI.isRetail then
     --- Warfronts
+    ---@diagnostic disable-next-line: undefined-field
     Warfront:ShowTooltip(tooltip, columns, showall, function()
       if SI.db.Tooltip.CategorySpaces then
         addsep()
@@ -5099,7 +5211,7 @@ function SI:ShowTooltip(anchorframe)
       end
     end
   end
-  
+
   local firstcurrency = true
   local ckeys = currency
   if SI.db.Tooltip.CurrencySortName then
@@ -5282,6 +5394,7 @@ function SI:ShowTooltip(anchorframe)
     if Tooltip:IsDetached() then
       local detachFrame = Tooltip:GetDetachedFrame()
       tooltip:Show()
+      ---@diagnostic disable-next-line: undefined-field
       QTip.layoutCleaner:CleanupLayouts()
       tooltip:ClearAllPoints()
       tooltip:SetPoint("BOTTOMLEFT", detachFrame)
@@ -5294,6 +5407,7 @@ function SI:ShowTooltip(anchorframe)
     if SI.db.Tooltip.FitToScreen then
       -- scale check
       --todo garuntee this exists
+      ---@diagnostic disable-next-line: undefined-field
       QTip.layoutCleaner:CleanupLayouts()
       local scale = tooltip:GetScale()
       local w,h = tooltip:GetSize()

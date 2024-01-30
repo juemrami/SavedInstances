@@ -283,7 +283,8 @@
         "GetNumTradeSkills",
         "GetTradeSkillCooldown",
         "GetNumTalentTabs",
-        "GetTalentTabInfo"
+        "GetTalentTabInfo",
+        "GRAY_FONT_COLOR"
     ],
     "diagnostics.disable": [
         "lowercase-global",

@@ -111,57 +111,79 @@ local function GetIndicatorOptions()
       name = L["You can combine icons and text in a single indicator if you wish. Simply choose an icon, and insert the word ICON into the text field. Anywhere the word ICON is found, the icon you chose will be substituted in."].." "..L["Similarly, the words KILLED and TOTAL will be substituted with the number of bosses killed and total in the lockout."],
     },
   }
-  for difficultyID, difficultyString in pairs(SI.difficultyStrings) do
-    local order = (tonumber(difficultyID:match("%d+")) or 0) + 10
+  for category, displayName in pairs(SI.difficultyStrings) do
+    local order = (tonumber(category:match("%d+")) or 0) + 10
     --- Position raid difficulties after dungeon difficulties
-    if difficultyID:find("^R") then 
+    if category:find("^R") then 
       order = order + 10
     end
-
-    args[difficultyID] = {
+    args[category] = {
       type = "group",
-      name = difficultyString,
+      name = displayName,
       order = order,
       args = {
-        [difficultyID.."Indicator"] = {
+        [category.."Indicator"] = {
           order = 1,
           type = "select",
           width = "half",
           name = EMBLEM_SYMBOL,
           values = SI.IndicatorIconTextures
         },
-        [difficultyID.."Text"] = {
+        [category.."Text"] = {
           order = 2,
           type = "input",
           name = L["Text"],
           multiline = false
         },
-        [difficultyID.."Color"] = {
+        [category.."Color"] = {
           order = 3,
           type = "color",
           width = "half",
           hasAlpha = false,
           name = COLOR,
           disabled = function()
-            return SI.db.Indicators[difficultyID .. "ClassColor"]
+            -- return false
+            return not not SI.db.Indicators[category .. "ClassColor"]
           end,
           get = function(info)
-            SI.db.Indicators[info[#info]] = SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
-            local r = SI.db.Indicators[info[#info]][1]
-            local g = SI.db.Indicators[info[#info]][2]
-            local b = SI.db.Indicators[info[#info]][3]
+            color = SI.db.Indicators[info[#info]]  or SI.defaultDB.Indicators[info[#info]]
+            local r = color[1]
+            local g = color[2]
+            local b = color[3]
+            --- will be using color mixin going forward. `nil` check required for backwards compatibility.
+            if color.GetRGB or color.GetRGBA then
+              r, g, b, a = (color.GetRGBA or color.GetRGB)(color)
+              SI:Debug("Color picker returned a colorMixin | r: %s, g: %s, b: %s, a: %s", r, g, b, a)
+            end
             return r, g, b, nil
           end,
           set = function(info, r, g, b, ...)
+            assert(r and g and b, "Color picker returned nil values")
+            local color = CreateColor(r, g, b, 1)
+            SI.db.Indicators[info[#info]] = color
+
+            --- for backwards comptaibility. this should be depracated in the future in favor of using a colormixin.
             SI.db.Indicators[info[#info]][1] = r
             SI.db.Indicators[info[#info]][2] = g
             SI.db.Indicators[info[#info]][3] = b
+            SI:Debug("Color picker set with colorMixin | r: %s, g: %s, b: %s", r, g, b)
           end,
         },
-        [difficultyID.."ClassColor"] = {
+        [category.."ClassColor1"] = {
           order = 4,
           type = "toggle",
-          name = L["Use class color"]
+          name = L["Use class color"],
+          -- set = function(info, value)
+          --   SI.db.Indicators[info[#info]] = value
+          -- end,
+          -- get = function(info)
+          --   return SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
+          -- end,
+        },
+        [category.."TEST"] = {
+          order = 6,
+          type = "toggle",
+          name = "this is a test",
         },
       },
     }
