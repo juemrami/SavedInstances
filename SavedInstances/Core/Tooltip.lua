@@ -1,7 +1,6 @@
 ---@type SavedInstances
 local SI, L = unpack(select(2, ...))
 ---@class TooltipModule : AceModule , AceEvent-3.0
----@field anchorframe Frame?
 local Module = SI:NewModule('Tooltip', 'AceEvent-3.0')
 local QTip = SI.Libs.QTip
 
@@ -38,6 +37,7 @@ local function getHeaderFont()
   return headerFont
 end
 
+---@return QTip tooltip
 function Module:AcquireTooltip()
   if tooltip then
     QTip:Release(tooltip)
@@ -49,8 +49,13 @@ function Module:AcquireTooltip()
   return tooltip
 end
 
+
+---@param ... any args to pass to QTip:Acquire
+---@return QTip tooltip
 function Module:AcquireIndicatorTip(...)
+  ---@class QTip : LibQTip.Tooltip
   indicatorTip = QTip:Acquire('SavedInstancesIndicatorTooltip', ...)
+  indicatorTip.anchorframe = nil
   indicatorTip:Clear()
   indicatorTip:SetHeaderFont(getHeaderFont())
   indicatorTip:SetScale(SI.db.Tooltip.Scale)
@@ -74,6 +79,7 @@ function Module:ReleaseTooltip()
   end
 end
 
+---@return boolean?
 function Module:IsTooltipShown()
   return tooltip and tooltip:IsShown()
 end
@@ -85,6 +91,7 @@ function Module.CloseIndicatorTip()
   end
 end
 
+---@return boolean?
 function Module:IsDetached()
   return detachframe and detachframe:IsShown()
 end
@@ -105,6 +112,7 @@ end
 
 function Module:ShowDetached()
   if not detachframe then
+    ---@class SavedInstances.DetachedTooltip: Frame, BackdropTemplate
     local frame = CreateFrame('Frame', 'SavedInstancesDetachHeader', UIParent, 'BasicFrameTemplate, BackdropTemplate')
     frame:SetMovable(true)
     frame:SetFrameStrata('TOOLTIP')
@@ -123,7 +131,11 @@ function Module:ShowDetached()
     end)
     frame:SetScript('OnMouseUp', function(self)
       self:StopMovingOrSizing()
+
+      ---@diagnostic disable-next-line: inject-field
       SI.db.Tooltip.posx = self:GetLeft()
+
+      ---@diagnostic disable-next-line: inject-field
       SI.db.Tooltip.posy = UIParent:GetTop() - (self:GetTop() * self:GetScale())
     end)
     frame:SetScript('OnHide', Module.ReleaseTooltip)

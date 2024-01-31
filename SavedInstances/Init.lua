@@ -14,7 +14,7 @@ _G.SavedInstances = Engine
 
 SI.Libs = {}
 ---@class QTip : LibQTip-1.0
----@field Acquire fun(self: QTip, name: string, columns: number, ...)
+---@field Acquire fun(self: QTip, name: string, columns: number, ...): QTip
 SI.Libs.QTip = LibStub('LibQTip-1.0')
 SI.Libs.LDB = LibStub('LibDataBroker-1.1', true)
 SI.Libs.LDBI = SI.Libs.LDB and LibStub('LibDBIcon-1.0', true)
@@ -37,7 +37,8 @@ SI.isWrath = build == 3
 SI.isSoD = SI.isClassicEra
     and C_Seasons.HasActiveSeason()
     and C_Seasons.GetActiveSeason() == (Enum.SeasonID.SeasonOfDiscovery or Enum.SeasonID.Placeholder)
-SI.isRetail = build >= 10
+
+    SI.isRetail = build >= 10
 SI.questCheckMark = '\124A:UI-LFG-ReadyMark:14:14\124a'
 SI.questTurnin = '\124A:QuestTurnin:14:14\124a'
 SI.questNormal = '\124A:QuestNormal:14:14\124a'

@@ -7,715 +7,819 @@ local Module = SI:NewModule('Progress', 'AceEvent-3.0')
 local Tooltip = SI:GetModule('Tooltip')
 ---@cast Tooltip TooltipModule
 
----Returns `true` if left *should* precede right.
----@alias CompareFunc fun(left: table, right: table): boolean
+---@class SingleQuestEntry
+---@field type "single"
+---@field expansion number
+---@field index number
+---@field name string
+---@field questID number
+---@field reset "none" | "daily" | "weekly"
+---@field persists boolean # if progress persists after reset period
+---@field fullObjective boolean
+
+---@class AnyQuestEntry
+---@field type "any"
+---@field expansion number
+---@field index number
+---@field name string
+---@field questID number[]
+---@field reset "none" | "daily" | "weekly"
+---@field persists boolean
+---@field fullObjective boolean
+
+---@class QuestListEntry
+---@field type "list"
+---@field expansion number
+---@field index number
+---@field name string
+---@field questID number[]
+---@field unlockQuest number?
+---@field reset "none" | "daily" | "weekly"
+---@field persists boolean
+---@field threshold number?
+---@field questAbbr table<number, string>?
+---@field progress boolean
+---@field onlyOnOrCompleted boolean
+---@field questName table<number, string>?
+---@field separateLines string[]?
 
 ---@class CustomEntry
----@field activityCompare CompareFunc?
----@field difficultyNames table<number, string>?
----@field factionIDs number[]?
+---@field type "custom"
+---@field expansion number
+---@field index number
+---@field name string
+---@field reset "none" | "daily" | "weekly"
+---@field func fun(store: table, entry: CustomEntry): nil
+---@field showFunc fun(store: table, entry: CustomEntry): string?
+---@field resetFunc nil | fun(store: table, entry: CustomEntry): nil
+---@field tooltipFunc nil | fun(store: table, entry: CustomEntry, toon: string): nil
+---@field activityCompare nil | fun(left: any, right: any): boolean # used in great-vault-raid and df-renown
+---@field relatedQuest number[]?
+---@field difficultyNames table<number, string>? # desc needed
+---@field factionIDs number[]? # desc needed
+---@field seasonID Enum.SeasonID? # used for classic era preset entries
+
+---@alias ProgressEntry SingleQuestEntry | AnyQuestEntry | QuestListEntry | CustomEntry
+
+---@class QuestStore
+---@field show boolean?
+---@field objectiveType string?
+---@field isComplete boolean?
+---@field isFinish boolean?
+---@field numFulfilled number?
+---@field numRequired number?
+---@field leaderboardCount number?
+---@field text string?
+---@field [number] string?
+
+---@class QuestListStore
+---@field show boolean?
+---@field [number] QuestStore?
 
 
 ---@type table<string, ProgressEntry>
 local presets = {
-  --
-  -- -- Great Vault (Raid)
-  -- ['great-vault-raid'] = {
-  --   type = 'custom',
-  --   index = 1,
-  --   name = RAIDS,
-  --   reset = 'weekly',
-  --   func = function(store, entry)
-  --     wipe(store)
+  -- Great Vault (Raid)
+  ['great-vault-raid'] = {
+    type = 'custom',
+    expansion = -1,
+    index = 1,
+    name = RAIDS,
+    reset = 'weekly',
+    func = function(store, entry)
+      wipe(store)
 
-  --     if SI.playerLevel < SI.maxLevel then
-  --       store.unlocked = false
-  --     else
-  --       store.unlocked = true
+      if SI.playerLevel < SI.maxLevel then
+        store.unlocked = false
+      else
+        store.unlocked = true
 
-  --       local activities = C_WeeklyRewards.GetActivities(Enum.WeeklyRewardChestThresholdType.Raid)
-  --       sort(activities, entry.activityCompare)
+        local activities = C_WeeklyRewards.GetActivities(Enum.WeeklyRewardChestThresholdType.Raid)
+        sort(activities, entry.activityCompare)
 
-  --       for i, activityInfo in ipairs(activities) do
-  --         if activityInfo.progress >= activityInfo.threshold then
-  --           store[i] = activityInfo.level
-  --         end
-  --       end
+        for i, activityInfo in ipairs(activities) do
+          if activityInfo.progress >= activityInfo.threshold then
+            store[i] = activityInfo.level
+          end
+        end
 
-  --       local rewardWaiting = C_WeeklyRewards.HasAvailableRewards() and C_WeeklyRewards.CanClaimRewards()
-  --       store.rewardWaiting = rewardWaiting
-  --     end
-  --   end,
-  --   showFunc = function(store, entry)
-  --     if not store.unlocked then
-  --       return
-  --     end
-  --     local text
-  --     for index = 1, #store do
-  --       if store[index] then
-  --         text = (index > 1 and (text .. "||") or "") .. (entry.difficultyNames[store[index]] or GetDifficultyInfo(store[index]))
-  --       end
-  --     end
-  --     if store.rewardWaiting then
-  --       if not text then
-  --         text = SI.questTurnin
-  --       else
-  --         text = text .. "(" .. SI.questTurnin .. ")"
-  --       end
-  --     end
-  --     return text
-  --   end,
-  --   resetFunc = function(store)
-  --     local unlocked = store.unlocked
-  --     local rewardWaiting = not not store[1]
-  --     wipe(store)
+        local rewardWaiting = C_WeeklyRewards.HasAvailableRewards() and C_WeeklyRewards.CanClaimRewards()
+        store.rewardWaiting = rewardWaiting
+      end
+    end,
+    showFunc = function(store, entry)
+      if not store.unlocked then
+        return
+      end
+      local text
+      for index = 1, #store do
+        if store[index] then
+          text = (index > 1 and (text .. "||") or "") .. (entry.difficultyNames[store[index]] or GetDifficultyInfo(store[index]))
+        end
+      end
+      if store.rewardWaiting then
+        if not text then
+          text = SI.questTurnin
+        else
+          text = text .. "(" .. SI.questTurnin .. ")"
+        end
+      end
+      return text
+    end,
+    resetFunc = function(store)
+      local unlocked = store.unlocked
+      local rewardWaiting = not not store[1]
+      wipe(store)
+      store.unlocked = unlocked
+      store.rewardWaiting = rewardWaiting
+    end,
+    -- addition info
+    activityCompare = function(left, right)
+      return left.index < right.index
+    end,
+    difficultyNames = {
+      [17] = 'L',
+      [14] = 'N',
+      [15] = 'H',
+      [16] = 'M',
+    },
+  },
+  -- Great Vault (PvP)
+  ['great-vault-pvp'] = {
+    type = 'custom',
+    index = 2,
+    name = PVP,
+    expansion = -1,
+    reset = 'weekly',
+    func = function(store)
+      wipe(store)
 
-  --     store.unlocked = unlocked
-  --     store.rewardWaiting = rewardWaiting
-  --   end,
-  --   -- addition info
-  --   activityCompare = function(left, right)
-  --     return left.index < right.index
-  --   end,
-  --   difficultyNames = {
-  --     [17] = 'L',
-  --     [14] = 'N',
-  --     [15] = 'H',
-  --     [16] = 'M',
-  --   },
-  -- },
-  -- -- Great Vault (PvP)
-  -- ['great-vault-pvp'] = {
-  --   type = 'custom',
-  --   index = 2,
-  --   name = PVP,
-  --   reset = 'weekly',
-  --   func = function(store)
-  --     wipe(store)
+      if SI.playerLevel < SI.maxLevel then
+        store.unlocked = false
+        store.isComplete = false
+      else
+        local weeklyProgress = C_WeeklyRewards.GetConquestWeeklyProgress()
+        local rewardWaiting = C_WeeklyRewards.HasAvailableRewards() and C_WeeklyRewards.CanClaimRewards()
 
-  --     if SI.playerLevel < SI.maxLevel then
-  --       store.unlocked = false
-  --       store.isComplete = false
-  --     else
-  --       local weeklyProgress = C_WeeklyRewards.GetConquestWeeklyProgress()
-  --       local rewardWaiting = C_WeeklyRewards.HasAvailableRewards() and C_WeeklyRewards.CanClaimRewards()
+        store.unlocked = true
+        store.isComplete = weeklyProgress.progress >= weeklyProgress.maxProgress
+        store.numFulfilled = weeklyProgress.progress
+        store.numRequired = weeklyProgress.maxProgress
+        store.unlocksCompleted = weeklyProgress.unlocksCompleted
+        store.maxUnlocks = weeklyProgress.maxUnlocks
+        store.rewardWaiting = rewardWaiting
+      end
+    end,
+    showFunc = function(store)
+      local text
+      if not store.unlocked then
+        return
+      elseif store.isComplete then
+        text = SI.questCheckMark
+      else
+        text = store.numFulfilled .. "/" .. store.numRequired
+      end
+      if store.unlocksCompleted and store.maxUnlocks then
+        text = text .. "(" .. store.unlocksCompleted .. "/" .. store.maxUnlocks .. ")"
+      end
+      if store.rewardWaiting then
+        text = text .. "(" .. SI.questTurnin .. ")"
+      end
+      return text
+    end,
+    resetFunc = function(store)
+      local unlocked = store.unlocked
+      local numRequired = store.numRequired
+      local maxUnlocks = store.maxUnlocks
+      local rewardWaiting = store.unlocksCompleted and store.unlocksCompleted > 0
+      wipe(store)
 
-  --       store.unlocked = true
-  --       store.isComplete = weeklyProgress.progress >= weeklyProgress.maxProgress
-  --       store.numFulfilled = weeklyProgress.progress
-  --       store.numRequired = weeklyProgress.maxProgress
-  --       store.unlocksCompleted = weeklyProgress.unlocksCompleted
-  --       store.maxUnlocks = weeklyProgress.maxUnlocks
-  --       store.rewardWaiting = rewardWaiting
-  --     end
-  --   end,
-  --   showFunc = function(store)
-  --     local text
-  --     if not store.unlocked then
-  --       return
-  --     elseif store.isComplete then
-  --       text = SI.questCheckMark
-  --     else
-  --       text = store.numFulfilled .. "/" .. store.numRequired
-  --     end
-  --     if store.unlocksCompleted and store.maxUnlocks then
-  --       text = text .. "(" .. store.unlocksCompleted .. "/" .. store.maxUnlocks .. ")"
-  --     end
-  --     if store.rewardWaiting then
-  --       text = text .. "(" .. SI.questTurnin .. ")"
-  --     end
-  --     return text
-  --   end,
-  --   resetFunc = function(store)
-  --     local unlocked = store.unlocked
-  --     local numRequired = store.numRequired
-  --     local maxUnlocks = store.maxUnlocks
-  --     local rewardWaiting = store.unlocksCompleted and store.unlocksCompleted > 0
-  --     wipe(store)
+      store.unlocked = unlocked
+      store.isComplete = false
+      store.numFulfilled = 0
+      store.numRequired = numRequired
+      store.unlocksCompleted = 0
+      store.maxUnlocks = maxUnlocks
+      store.rewardWaiting = rewardWaiting
+    end,
+  },
+  -- The World Awaits
+  ['the-world-awaits'] = {
+    type = 'single',
+    index = 3,
+    expansion = 9,
+    name = L["The World Awaits"],
+    questID = 72728,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Emissary of War
+  ['emissary-of-war'] = {
+    type = 'single',
+    index = 4,
+    expansion = 9,
+    name = L["Emissary of War"],
+    questID = 72722,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Timewalking
+  ['timewalking'] = {
+    type = 'any',
+    expansion = -1,
+    index = 5,
+    name = L["Timewalking Weekend Event"],
+    questID = {
+      72727, -- A Burning Path Through Time - TBC Timewalking
+      72726, -- A Frozen Path Through Time - WLK Timewalking
+      72810, -- A Shattered Path Through Time - CTM Timewalking
+      72725, -- A Shrouded Path Through Time - MOP Timewalking
+      72724, -- A Savage Path Through Time - WOD Timewalking
+      72719, -- A Fel Path Through Time - LEG Timewalking
+    },
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Island Expedition
+  ['bfa-island'] = {
+    type = 'any',
+    expansion = 7,
+    index = 1,
+    name = ISLANDS_HEADER,
+    questID = {
+      53436, -- Alliance
+      53435, -- Horde
+    },
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- Horrific Vision
+  ['bfa-horrific-vision'] = {
+    type = 'list',
+    expansion = 7,
+    index = 2,
+    name = SPLASH_BATTLEFORAZEROTH_8_3_0_FEATURE1_TITLE,
+    questID = {
+      57848,
+      57844,
+      57847,
+      57843,
+      57846,
+      57842,
+      57845,
+      57841,
+    },
+    unlockQuest = 58634, -- Opening the Gateway
+    reset = 'weekly',
+    persists = false,
+    questAbbr = {
+      [57848] = "5 + 5",
+      [57844] = "5 + 4",
+      [57847] = "5 + 3",
+      [57843] = "5 + 2",
+      [57846] = "5 + 1",
+      [57842] = "5 + 0",
+      [57845] = "3 + 0",
+      [57841] = "1 + 0",
+    },
+    progress = false,
+    onlyOnOrCompleted = false,
+    questName = {
+      [57848] = L["Full Clear + 5 Masks"],
+      [57844] = L["Full Clear + 4 Masks"],
+      [57847] = L["Full Clear + 3 Masks"],
+      [57843] = L["Full Clear + 2 Masks"],
+      [57846] = L["Full Clear + 1 Mask"],
+      [57842] = L["Full Clear No Masks"],
+      [57845] = L["Vision Boss + 2 Bonus Objectives"],
+      [57841] = L["Vision Boss Only"],
+    },
+  },
+  -- N'Zoth Assaults
+  ['bfa-nzoth-assault'] = {
+    type = 'list',
+    expansion = 7,
+    index = 3,
+    name = WORLD_MAP_THREATS,
+    questID = {
+      -- Uldum
+      57157, -- Assault: The Black Empire
+      55350, -- Assault: Amathet Advance
+      56308, -- Assault: Aqir Unearthed
+      -- Vale of Eternal Blossoms
+      56064, -- Assault: The Black Empire
+      57008, -- Assault: The Warring Clans
+      57728, -- Assault: The Endless Swarm
+    },
+    unlockQuest = 57362, -- Deeper Into the Darkness
+    reset = 'weekly',
+    persists = false,
+    threshold = 3,
+    progress = true,
+    onlyOnOrCompleted = true,
+  },
+  -- Lesser Visions of N'Zoth
+  ['bfa-lesser-vision'] = {
+    type = 'any',
+    expansion = 7,
+    index = 4,
+    name = L["Lesser Visions of N'Zoth"],
+    questID = {
+      58151, -- Minions of N'Zoth
+      58155, -- A Hand in the Dark
+      58156, -- Vanquishing the Darkness
+      58167, -- Preventative Measures
+      58168, -- A Dark, Glaring Reality
+    },
+    reset = 'daily',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Covenant Assaults
+  ['sl-covenant-assault'] = {
+    type = 'any',
+    expansion = 8,
+    index = 1,
+    name = L["Covenant Assaults"],
+    questID = {
+      63823, -- Night Fae Assault
+      63822, -- Venthyr Assault
+      63824, -- Kyrian Assault
+      63543, -- Necrolord Assault
+    },
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Patterns Within Patterns
+  ['sl-patterns-within-patterns'] = {
+    type = 'single',
+    expansion = 8,
+    index = 2,
+    name = L["Patterns Within Patterns"],
+    questID = 66042,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- Dragonflight Renown
+  ['df-renown'] = {
+    type = 'custom',
+    expansion = 9,
+    index = 1,
+    name = L["Dragonflight Renown"],
+    reset = 'none',
+    func = function(store)
+      wipe(store)
+      local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
+      for _, factionID in ipairs(majorFactionIDs) do
+        local data = C_MajorFactions.GetMajorFactionData(factionID)
+        store[factionID] = data and {data.renownLevel, data.renownReputationEarned, data.renownLevelThreshold}
+      end
+    end,
+    showFunc = function(store, entry)
+      local text
+      local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
 
-  --     store.unlocked = unlocked
-  --     store.isComplete = false
-  --     store.numFulfilled = 0
-  --     store.numRequired = numRequired
-  --     store.unlocksCompleted = 0
-  --     store.maxUnlocks = maxUnlocks
-  --     store.rewardWaiting = rewardWaiting
-  --   end,
-  -- },
-  -- -- The World Awaits
-  -- ['the-world-awaits'] = {
-  --   type = 'single',
-  --   index = 3,
-  --   name = L["The World Awaits"],
-  --   questID = 72728,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Emissary of War
-  -- ['emissary-of-war'] = {
-  --   type = 'single',
-  --   index = 4,
-  --   name = L["Emissary of War"],
-  --   questID = 72722,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Timewalking
-  -- ['timewalking'] = {
-  --   type = 'any',
-  --   index = 5,
-  --   name = L["Timewalking Weekend Event"],
-  --   questID = {
-  --     72727, -- A Burning Path Through Time - TBC Timewalking
-  --     72726, -- A Frozen Path Through Time - WLK Timewalking
-  --     72810, -- A Shattered Path Through Time - CTM Timewalking
-  --     72725, -- A Shrouded Path Through Time - MOP Timewalking
-  --     72724, -- A Savage Path Through Time - WOD Timewalking
-  --     72719, -- A Fel Path Through Time - LEG Timewalking
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Island Expedition
-  -- ['bfa-island'] = {
-  --   type = 'any',
-  --   expansion = 7,
-  --   index = 1,
-  --   name = ISLANDS_HEADER,
-  --   questID = {
-  --     53436, -- Alliance
-  --     53435, -- Horde
-  --   },
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- Horrific Vision
-  -- ['bfa-horrific-vision'] = {
-  --   type = 'list',
-  --   expansion = 7,
-  --   index = 2,
-  --   name = SPLASH_BATTLEFORAZEROTH_8_3_0_FEATURE1_TITLE,
-  --   questID = {
-  --     57848,
-  --     57844,
-  --     57847,
-  --     57843,
-  --     57846,
-  --     57842,
-  --     57845,
-  --     57841,
-  --   },
-  --   unlockQuest = 58634, -- Opening the Gateway
-  --   reset = 'weekly',
-  --   persists = false,
-  --   questAbbr = {
-  --     [57848] = "5 + 5",
-  --     [57844] = "5 + 4",
-  --     [57847] = "5 + 3",
-  --     [57843] = "5 + 2",
-  --     [57846] = "5 + 1",
-  --     [57842] = "5 + 0",
-  --     [57845] = "3 + 0",
-  --     [57841] = "1 + 0",
-  --   },
-  --   progress = false,
-  --   onlyOnOrCompleted = false,
-  --   questName = {
-  --     [57848] = L["Full Clear + 5 Masks"],
-  --     [57844] = L["Full Clear + 4 Masks"],
-  --     [57847] = L["Full Clear + 3 Masks"],
-  --     [57843] = L["Full Clear + 2 Masks"],
-  --     [57846] = L["Full Clear + 1 Mask"],
-  --     [57842] = L["Full Clear No Masks"],
-  --     [57845] = L["Vision Boss + 2 Bonus Objectives"],
-  --     [57841] = L["Vision Boss Only"],
-  --   },
-  -- },
-  -- -- N'Zoth Assaults
-  -- ['bfa-nzoth-assault'] = {
-  --   type = 'list',
-  --   expansion = 7,
-  --   index = 3,
-  --   name = WORLD_MAP_THREATS,
-  --   questID = {
-  --     -- Uldum
-  --     57157, -- Assault: The Black Empire
-  --     55350, -- Assault: Amathet Advance
-  --     56308, -- Assault: Aqir Unearthed
-  --     -- Vale of Eternal Blossoms
-  --     56064, -- Assault: The Black Empire
-  --     57008, -- Assault: The Warring Clans
-  --     57728, -- Assault: The Endless Swarm
-  --   },
-  --   unlockQuest = 57362, -- Deeper Into the Darkness
-  --   reset = 'weekly',
-  --   persists = false,
-  --   threshold = 3,
-  --   progress = true,
-  --   onlyOnOrCompleted = true,
-  -- },
-  -- -- Lesser Visions of N'Zoth
-  -- ['bfa-lesser-vision'] = {
-  --   type = 'any',
-  --   expansion = 7,
-  --   index = 4,
-  --   name = L["Lesser Visions of N'Zoth"],
-  --   questID = {
-  --     58151, -- Minions of N'Zoth
-  --     58155, -- A Hand in the Dark
-  --     58156, -- Vanquishing the Darkness
-  --     58167, -- Preventative Measures
-  --     58168, -- A Dark, Glaring Reality
-  --   },
-  --   reset = 'daily',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Covenant Assaults
-  -- ['sl-covenant-assault'] = {
-  --   type = 'any',
-  --   expansion = 8,
-  --   index = 1,
-  --   name = L["Covenant Assaults"],
-  --   questID = {
-  --     63823, -- Night Fae Assault
-  --     63822, -- Venthyr Assault
-  --     63824, -- Kyrian Assault
-  --     63543, -- Necrolord Assault
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Patterns Within Patterns
-  -- ['sl-patterns-within-patterns'] = {
-  --   type = 'single',
-  --   expansion = 8,
-  --   index = 2,
-  --   name = L["Patterns Within Patterns"],
-  --   questID = 66042,
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- Dragonflight Renown
-  -- ['df-renown'] = {
-  --   type = 'custom',
-  --   expansion = 9,
-  --   index = 1,
-  --   name = L["Dragonflight Renown"],
-  --   reset = 'none',
-  --   func = function(store)
-  --     wipe(store)
-  --     local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
-  --     for _, factionID in ipairs(majorFactionIDs) do
-  --       local data = C_MajorFactions.GetMajorFactionData(factionID)
-  --       store[factionID] = data and {data.renownLevel, data.renownReputationEarned, data.renownLevelThreshold}
-  --     end
-  --   end,
-  --   showFunc = function(store, entry)
-  --     local text
-  --     local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
+      local factionIDs = entry.factionIDs
+      for _, factionID in ipairs(entry.factionIDs) do
+        if not text then
+          text = store[factionID] and store[factionID][1] or '0'
+        else
+          text = text .. "||" .. (store[factionID] and store[factionID][1] or '0')
+        end
+      end
 
-  --     local factionIDs = entry.factionIDs
-  --     for _, factionID in ipairs(entry.factionIDs) do
-  --       if not text then
-  --         text = store[factionID] and store[factionID][1] or '0'
-  --       else
-  --         text = text .. "||" .. (store[factionID] and store[factionID][1] or '0')
-  --       end
-  --     end
+      for _, factionID in ipairs(majorFactionIDs) do
+        ---@cast factionIDs table<number, number>
+        if not tContains(factionIDs, factionID) then
+          if not text then
+            text = store[factionID] and store[factionID][1] or '0'
+          else
+            text = text .. "||" .. (store[factionID] and store[factionID][1] or '0')
+          end
+        end
+      end
 
-  --     for _, factionID in ipairs(majorFactionIDs) do
-  --       ---@cast factionIDs table<number, number>
-  --       if not tContains(factionIDs, factionID) then
-  --         if not text then
-  --           text = store[factionID] and store[factionID][1] or '0'
-  --         else
-  --           text = text .. "||" .. (store[factionID] and store[factionID][1] or '0')
-  --         end
-  --       end
-  --     end
+      return text
+    end,
+    tooltipFunc = function(store, entry, toon)
+      local tip = Tooltip:AcquireIndicatorTip(2, 'LEFT', 'RIGHT')
+      tip:AddHeader(SI:ClassColorToon(toon), L["Dragonflight Renown"])
 
-  --     return text
-  --   end,
-  --   tooltipFunc = function(store, entry, toon)
-  --     local tip = Tooltip:AcquireIndicatorTip(2, 'LEFT', 'RIGHT')
-  --     tip:AddHeader(SI:ClassColorToon(toon), L["Dragonflight Renown"])
+      local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
 
-  --     local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
+      local factionIDs = entry.factionIDs
+      ---@cast factionIDs table<number, number>
+      for _, factionID in ipairs(factionIDs) do
+        if store[factionID] then
+          tip:AddLine(
+            C_MajorFactions.GetMajorFactionData(factionID).name,
+            format("%s %s (%s/%s)", COVENANT_SANCTUM_TAB_RENOWN, unpack(store[factionID]))
+          )
+        else
+          tip:AddLine(C_MajorFactions.GetMajorFactionData(factionID).name, LOCKED)
+        end
+      end
 
-  --     local factionIDs = entry.factionIDs
-  --     ---@cast factionIDs table<number, number>
-  --     for _, factionID in ipairs(factionIDs) do
-  --       if store[factionID] then
-  --         tip:AddLine(
-  --           C_MajorFactions.GetMajorFactionData(factionID).name,
-  --           format("%s %s (%s/%s)", COVENANT_SANCTUM_TAB_RENOWN, unpack(store[factionID]))
-  --         )
-  --       else
-  --         tip:AddLine(C_MajorFactions.GetMajorFactionData(factionID).name, LOCKED)
-  --       end
-  --     end
+      for _, factionID in ipairs(majorFactionIDs) do
+        if not tContains(factionIDs, factionID) then
+          if store[factionID] then
+            tip:AddLine(
+              C_MajorFactions.GetMajorFactionData(factionID).name,
+              format("%s %s (%s/%s)", COVENANT_SANCTUM_TAB_RENOWN, unpack(store[factionID]))
+            )
+          else
+            tip:AddLine(C_MajorFactions.GetMajorFactionData(factionID).name, LOCKED)
+          end
+        end
+      end
 
-  --     for _, factionID in ipairs(majorFactionIDs) do
-  --       if not tContains(factionIDs, factionID) then
-  --         if store[factionID] then
-  --           tip:AddLine(
-  --             C_MajorFactions.GetMajorFactionData(factionID).name,
-  --             format("%s %s (%s/%s)", COVENANT_SANCTUM_TAB_RENOWN, unpack(store[factionID]))
-  --           )
-  --         else
-  --           tip:AddLine(C_MajorFactions.GetMajorFactionData(factionID).name, LOCKED)
-  --         end
-  --       end
-  --     end
+      tip:Show()
+    end,
+    -- addition info
+    factionIDs = {
+      2574, -- Dream Wardens
+      2564, -- Loamm Niffen
+      2507, -- Dragonscale Expedition
+      2503, -- Maruuk Centaur
+      2511, -- Iskaara Tuskarr
+      2510, -- Valdrakken Accord
+    },
+    activityCompare = function() return false end,
+  },
+  -- Aiding the Accord
+  ['df-aiding-the-accord'] = {
+    type = 'any',
+    expansion = 9,
+    index = 2,
+    name = L["Aiding the Accord"],
+    questID = {
+      70750, -- Aiding the Accord
+      72068, -- Aiding the Accord: A Feast For All
+      72373, -- Aiding the Accord: The Hunt is On
+      72374, -- Aiding the Accord: Dragonbane Keep
+      72375, -- Aiding the Accord: The Isles Call
+      75259, -- Aiding the Accord: Zskera Vault
+      75859, -- Aiding the Accord: Sniffenseeking
+      75860, -- Aiding the Accord: Researchers Under Fire
+      75861, -- Aiding the Accord: Suffusion Camp
+      77254, -- Aiding the Accord: Time Rift
+      77976, -- Aiding the Accord: Dreamsurge
+      78446, -- Aiding the Accord: Superbloom
+      78447, -- Aiding the Accord: Emerald Bounty
+      78861, -- Aiding the Accord
+    },
+    reset = 'weekly',
+    persists = true,
+    fullObjective = true,
+  },
+  -- Community Feast
+  ['df-community-feast'] = {
+    type = 'single',
+    expansion = 9,
+    index = 3,
+    name = L["Community Feast"],
+    questID = 70893,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Siege on Dragonbane Keep
+  ['df-siege-on-dragonbane-keep'] = {
+    type = 'single',
+    expansion = 9,
+    index = 4,
+    name = L["Siege on Dragonbane Keep"],
+    questID = 70866,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Grand Hunt
+  ['df-grand-hunt'] = {
+    type = 'list',
+    expansion = 9,
+    index = 5,
+    name = L["Grand Hunt"],
+    questID = {
+      70906, -- Epic
+      71136, -- Rare
+      71137, -- Uncommon
+    },
+    reset = 'weekly',
+    persists = false,
+    progress = false,
+    onlyOnOrCompleted = false,
+    questName = {
+      [70906] = MAW_BUFF_QUALITY_STRING_EPIC, -- Epic
+      [71136] = MAW_BUFF_QUALITY_STRING_RARE, -- Rare
+      [71137] = MAW_BUFF_QUALITY_STRING_UNCOMMON, -- Uncommon
+    },
+  },
+  -- Trial of Elements
+  ['df-trial-of-elements'] = {
+    type = 'single',
+    expansion = 9,
+    index = 6,
+    name = L["Trial of Elements"],
+    questID = 71995,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Trial of Flood
+  ['df-trial-of-flood'] = {
+    type = 'single',
+    expansion = 9,
+    index = 7,
+    name = L["Trial of Flood"],
+    questID = 71033,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Primal Storms Core
+  ['df-primal-storms-core'] = {
+    type = 'list',
+    expansion = 9,
+    index = 8,
+    name = L["Primal Storms Core"],
+    questID = {
+      73162, -- Storm's Fury
+      72686, -- Storm Surge
+      70723, -- Earth
+      70752, -- Water
+      70753, -- Air
+      70754, -- Fire
+    },
+    reset = 'weekly',
+    persists = false,
+    progress = false,
+    onlyOnOrCompleted = false,
+    questName = {
+      [73162] = L["Storm's Fury"], -- Storm's Fury
+      [72686] = L["Storm Surge"], -- Storm Surge
+      [70723] = YELLOW_FONT_COLOR_CODE .. L["Earth Core"] .. FONT_COLOR_CODE_CLOSE, -- Earth
+      [70752] = "|cff42a4f5" .. L["Water Core"] .. FONT_COLOR_CODE_CLOSE, -- Water
+      [70753] = "|cffe4f2f5" .. L["Air Core"] .. FONT_COLOR_CODE_CLOSE, -- Air
+      [70754] = ORANGE_FONT_COLOR_CODE .. L["Fire Core"] .. FONT_COLOR_CODE_CLOSE, -- Fire
+    },
+  },
+  -- Primal Storms Elementals
+  ['df-primal-storms-elementals'] = {
+    type = 'list',
+    expansion = 9,
+    index = 9,
+    name = L["Primal Storms Elementals"],
+    questID = {
+      73991, -- Emblazion -- Fire
+      74005, -- Infernum
+      74006, -- Kain Firebrand
+      74016, -- Neela Firebane
+      73989, -- Crystalus -- Water
+      73993, -- Frozion
+      74027, -- Rouen Icewind
+      74009, -- Iceblade Trio
+      73986, -- Bouldron -- Earth
+      73998, -- Gravlion
+      73999, -- Grizzlerock
+      74039, -- Zurgaz Corebreaker
+      73995, -- Gaelzion -- Air
+      74007, -- Karantun
+      74022, -- Pipspark Thundersnap
+      74038, -- Voraazka
+    },
+    reset = 'daily',
+    persists = false,
+    progress = false,
+    onlyOnOrCompleted = false,
+    questName = {
+      [73991] = ORANGE_FONT_COLOR_CODE .. L["Emblazion"] .. FONT_COLOR_CODE_CLOSE, -- Emblazion -- Fire
+      [74005] = ORANGE_FONT_COLOR_CODE .. L["Infernum"] .. FONT_COLOR_CODE_CLOSE, -- Infernum
+      [74006] = ORANGE_FONT_COLOR_CODE .. L["Kain Firebrand"] .. FONT_COLOR_CODE_CLOSE, -- Kain Firebrand
+      [74016] = ORANGE_FONT_COLOR_CODE .. L["Neela Firebane"] .. FONT_COLOR_CODE_CLOSE, -- Neela Firebane
+      [73989] = "|cff42a4f5" .. L["Crystalus"] .. FONT_COLOR_CODE_CLOSE, -- Crystalus -- Water
+      [73993] = "|cff42a4f5" .. L["Frozion"] .. FONT_COLOR_CODE_CLOSE, -- Frozion
+      [74027] = "|cff42a4f5" .. L["Rouen Icewind"] .. FONT_COLOR_CODE_CLOSE, -- Rouen Icewind
+      [74009] = "|cff42a4f5" .. L["Iceblade Trio"] .. FONT_COLOR_CODE_CLOSE, -- Iceblade Trio
+      [73986] = YELLOW_FONT_COLOR_CODE .. L["Bouldron"] .. FONT_COLOR_CODE_CLOSE, -- Bouldron -- Earth
+      [73998] = YELLOW_FONT_COLOR_CODE .. L["Gravlion"] .. FONT_COLOR_CODE_CLOSE, -- Gravlion
+      [73999] = YELLOW_FONT_COLOR_CODE .. L["Grizzlerock"] .. FONT_COLOR_CODE_CLOSE, -- Grizzlerock
+      [74039] = YELLOW_FONT_COLOR_CODE .. L["Zurgaz Corebreaker"] .. FONT_COLOR_CODE_CLOSE, -- Zurgaz Corebreaker
+      [73995] = "|cffe4f2f5" .. L["Gaelzion"] .. FONT_COLOR_CODE_CLOSE, -- Gaelzion -- Air
+      [74007] = "|cffe4f2f5" .. L["Karantun"] .. FONT_COLOR_CODE_CLOSE, -- Karantun
+      [74022] = "|cffe4f2f5" .. L["Pipspark Thundersnap"] .. FONT_COLOR_CODE_CLOSE, -- Pipspark Thundersnap
+      [74038] = "|cffe4f2f5" .. L["Voraazka"] .. FONT_COLOR_CODE_CLOSE, -- Voraazka
+    },
+    separateLines = {
+      [1] = ORANGE_FONT_COLOR_CODE .. L["Fire"] .. FONT_COLOR_CODE_CLOSE,
+      [5] = "|cff42a4f5" .. L["Water"] .. FONT_COLOR_CODE_CLOSE,
+      [9] = YELLOW_FONT_COLOR_CODE .. L["Earth"] .. FONT_COLOR_CODE_CLOSE,
+      [13] = "|cffe4f2f5" .. L["Air"] .. FONT_COLOR_CODE_CLOSE,
+    },
+  },
+  -- Sparks of Life
+  ['df-sparks-of-life'] = {
+    type = 'any',
+    expansion = 9,
+    index = 10,
+    name = L["Sparks of Life"],
+    questID = {
+      72646, -- The Waking Shores
+      72647, -- Ohn'ahran Plains
+      72648, -- The Azure Span
+      72649, -- Thaldraszus
+    },
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- A Worthy Ally: Loamm Niffen
+  ['df-a-worthy-ally-loamm-niffen'] = {
+    type = 'single',
+    expansion = 9,
+    index = 11,
+    name = L["A Worthy Ally: Loamm Niffen"],
+    questID = 75665,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- Fighting is Its Own Reward
+  ['df-fighting-is-its-own-reward'] = {
+    type = 'single',
+    expansion = 9,
+    index = 12,
+    name = L["Fighting is Its Own Reward"],
+    questID = 76122,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- Researchers Under Fire
+  ['df-researchers-under-fire'] = {
+    type = 'list',
+    expansion = 9,
+    index = 13,
+    name = L["Researchers Under Fire"],
+    questID = {
+      75630, -- Epic
+      75629, -- Rare
+      75628, -- Uncommon
+      75627, -- Common
+    },
+    reset = 'weekly',
+    persists = false,
+    progress = false,
+    onlyOnOrCompleted = false,
+    questName = {
+      [75630] = MAW_BUFF_QUALITY_STRING_EPIC, -- Epic
+      [75629] = MAW_BUFF_QUALITY_STRING_RARE, -- Rare
+      [75628] = MAW_BUFF_QUALITY_STRING_UNCOMMON, -- Uncommon
+      [75627] = MAW_BUFF_QUALITY_STRING_COMMON, -- Common
+    },
+  },
+  -- Disciple of Fyrakk
+  ['df-disciple-of-fyrakk'] = {
+    type = 'single',
+    expansion = 9,
+    index = 14,
+    name = L["Disciple of Fyrakk"],
+    questID = 75467,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Secured Shipment
+  ['df-secured-shipment'] = {
+    type = 'any',
+    expansion = 9,
+    index = 15,
+    name = L["Secured Shipment"],
+    questID = {
+      75525,
+      74526,
+    },
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Time Rift
+  ['df-time-rift'] = {
+    type = 'single',
+    expansion = 9,
+    index = 16,
+    name = L["Time Rift"],
+    questID = 77836,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- Dreamsurge
+  ['df-dreamsurge'] = {
+    type = 'single',
+    expansion = 9,
+    index = 17,
+    name = L["Shaping the Dreamsurge"],
+    questID = 77251,
+    reset = 'weekly',
+    persists = false,
+    fullObjective = false,
+  },
+  -- A Worthy Ally: Dream Wardens
+  ['df-a-worthy-ally-dream-wardens'] = {
+    type = 'single',
+    expansion = 9,
+    index = 18,
+    name = L["A Worthy Ally: Dream Wardens"],
+    questID = 78444,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- The Superbloom
+  ['df-the-superbloom'] = {
+    type = 'single',
+    expansion = 9,
+    index = 19,
+    name = L["The Superbloom"],
+    questID = 78319,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- Blooming Dreamseeds
+  ['df-blooming-dreamseeds'] = {
+    type = 'single',
+    expansion = 9,
+    index = 20,
+    name = L["Blooming Dreamseeds"],
+    questID = 78821,
+    reset = 'weekly',
+    persists = true,
+    fullObjective = false,
+  },
+  -- Shipment of Goods
+  ['df-shipment-of-goods'] = {
+    type = 'list',
+    expansion = 9,
+    index = 21,
+    name = L["Shipment of Goods"],
+    questID = {
+      78427, -- Great Crates!
+      78428, -- Crate of the Art
+    },
+    reset = 'weekly',
+    persists = false,
+    progress = true,
+    onlyOnOrCompleted = false,
+  },
 
-  --     tip:Show()
-  --   end,
-  --   -- addition info
-  --   factionIDs = {
-  --     2574, -- Dream Wardens
-  --     2564, -- Loamm Niffen
-  --     2507, -- Dragonscale Expedition
-  --     2503, -- Maruuk Centaur
-  --     2511, -- Iskaara Tuskarr
-  --     2510, -- Valdrakken Accord
-  --   },
-  --   activityCompare = function() return false end,
-  -- },
-  -- -- Aiding the Accord
-  -- ['df-aiding-the-accord'] = {
-  --   type = 'any',
-  --   expansion = 9,
-  --   index = 2,
-  --   name = L["Aiding the Accord"],
-  --   questID = {
-  --     70750, -- Aiding the Accord
-  --     72068, -- Aiding the Accord: A Feast For All
-  --     72373, -- Aiding the Accord: The Hunt is On
-  --     72374, -- Aiding the Accord: Dragonbane Keep
-  --     72375, -- Aiding the Accord: The Isles Call
-  --     75259, -- Aiding the Accord: Zskera Vault
-  --     75859, -- Aiding the Accord: Sniffenseeking
-  --     75860, -- Aiding the Accord: Researchers Under Fire
-  --     75861, -- Aiding the Accord: Suffusion Camp
-  --     77254, -- Aiding the Accord: Time Rift
-  --     77976, -- Aiding the Accord: Dreamsurge
-  --     78446, -- Aiding the Accord: Superbloom
-  --     78447, -- Aiding the Accord: Emerald Bounty
-  --     78861, -- Aiding the Accord
-  --   },
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = true,
-  -- },
-  -- -- Community Feast
-  -- ['df-community-feast'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 3,
-  --   name = L["Community Feast"],
-  --   questID = 70893,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Siege on Dragonbane Keep
-  -- ['df-siege-on-dragonbane-keep'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 4,
-  --   name = L["Siege on Dragonbane Keep"],
-  --   questID = 70866,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Grand Hunt
-  -- ['df-grand-hunt'] = {
-  --   type = 'list',
-  --   expansion = 9,
-  --   index = 5,
-  --   name = L["Grand Hunt"],
-  --   questID = {
-  --     70906, -- Epic
-  --     71136, -- Rare
-  --     71137, -- Uncommon
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   progress = false,
-  --   onlyOnOrCompleted = false,
-  --   questName = {
-  --     [70906] = MAW_BUFF_QUALITY_STRING_EPIC, -- Epic
-  --     [71136] = MAW_BUFF_QUALITY_STRING_RARE, -- Rare
-  --     [71137] = MAW_BUFF_QUALITY_STRING_UNCOMMON, -- Uncommon
-  --   },
-  -- },
-  -- -- Trial of Elements
-  -- ['df-trial-of-elements'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 6,
-  --   name = L["Trial of Elements"],
-  --   questID = 71995,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Trial of Flood
-  -- ['df-trial-of-flood'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 7,
-  --   name = L["Trial of Flood"],
-  --   questID = 71033,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Primal Storms Core
-  -- ['df-primal-storms-core'] = {
-  --   type = 'list',
-  --   expansion = 9,
-  --   index = 8,
-  --   name = L["Primal Storms Core"],
-  --   questID = {
-  --     73162, -- Storm's Fury
-  --     72686, -- Storm Surge
-  --     70723, -- Earth
-  --     70752, -- Water
-  --     70753, -- Air
-  --     70754, -- Fire
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   progress = false,
-  --   onlyOnOrCompleted = false,
-  --   questName = {
-  --     [73162] = L["Storm's Fury"], -- Storm's Fury
-  --     [72686] = L["Storm Surge"], -- Storm Surge
-  --     [70723] = YELLOW_FONT_COLOR_CODE .. L["Earth Core"] .. FONT_COLOR_CODE_CLOSE, -- Earth
-  --     [70752] = "|cff42a4f5" .. L["Water Core"] .. FONT_COLOR_CODE_CLOSE, -- Water
-  --     [70753] = "|cffe4f2f5" .. L["Air Core"] .. FONT_COLOR_CODE_CLOSE, -- Air
-  --     [70754] = ORANGE_FONT_COLOR_CODE .. L["Fire Core"] .. FONT_COLOR_CODE_CLOSE, -- Fire
-  --   },
-  -- },
-  -- -- Primal Storms Elementals
-  -- ['df-primal-storms-elementals'] = {
-  --   type = 'list',
-  --   expansion = 9,
-  --   index = 9,
-  --   name = L["Primal Storms Elementals"],
-  --   questID = {
-  --     73991, -- Emblazion -- Fire
-  --     74005, -- Infernum
-  --     74006, -- Kain Firebrand
-  --     74016, -- Neela Firebane
-  --     73989, -- Crystalus -- Water
-  --     73993, -- Frozion
-  --     74027, -- Rouen Icewind
-  --     74009, -- Iceblade Trio
-  --     73986, -- Bouldron -- Earth
-  --     73998, -- Gravlion
-  --     73999, -- Grizzlerock
-  --     74039, -- Zurgaz Corebreaker
-  --     73995, -- Gaelzion -- Air
-  --     74007, -- Karantun
-  --     74022, -- Pipspark Thundersnap
-  --     74038, -- Voraazka
-  --   },
-  --   reset = 'daily',
-  --   persists = false,
-  --   progress = false,
-  --   onlyOnOrCompleted = false,
-  --   questName = {
-  --     [73991] = ORANGE_FONT_COLOR_CODE .. L["Emblazion"] .. FONT_COLOR_CODE_CLOSE, -- Emblazion -- Fire
-  --     [74005] = ORANGE_FONT_COLOR_CODE .. L["Infernum"] .. FONT_COLOR_CODE_CLOSE, -- Infernum
-  --     [74006] = ORANGE_FONT_COLOR_CODE .. L["Kain Firebrand"] .. FONT_COLOR_CODE_CLOSE, -- Kain Firebrand
-  --     [74016] = ORANGE_FONT_COLOR_CODE .. L["Neela Firebane"] .. FONT_COLOR_CODE_CLOSE, -- Neela Firebane
-  --     [73989] = "|cff42a4f5" .. L["Crystalus"] .. FONT_COLOR_CODE_CLOSE, -- Crystalus -- Water
-  --     [73993] = "|cff42a4f5" .. L["Frozion"] .. FONT_COLOR_CODE_CLOSE, -- Frozion
-  --     [74027] = "|cff42a4f5" .. L["Rouen Icewind"] .. FONT_COLOR_CODE_CLOSE, -- Rouen Icewind
-  --     [74009] = "|cff42a4f5" .. L["Iceblade Trio"] .. FONT_COLOR_CODE_CLOSE, -- Iceblade Trio
-  --     [73986] = YELLOW_FONT_COLOR_CODE .. L["Bouldron"] .. FONT_COLOR_CODE_CLOSE, -- Bouldron -- Earth
-  --     [73998] = YELLOW_FONT_COLOR_CODE .. L["Gravlion"] .. FONT_COLOR_CODE_CLOSE, -- Gravlion
-  --     [73999] = YELLOW_FONT_COLOR_CODE .. L["Grizzlerock"] .. FONT_COLOR_CODE_CLOSE, -- Grizzlerock
-  --     [74039] = YELLOW_FONT_COLOR_CODE .. L["Zurgaz Corebreaker"] .. FONT_COLOR_CODE_CLOSE, -- Zurgaz Corebreaker
-  --     [73995] = "|cffe4f2f5" .. L["Gaelzion"] .. FONT_COLOR_CODE_CLOSE, -- Gaelzion -- Air
-  --     [74007] = "|cffe4f2f5" .. L["Karantun"] .. FONT_COLOR_CODE_CLOSE, -- Karantun
-  --     [74022] = "|cffe4f2f5" .. L["Pipspark Thundersnap"] .. FONT_COLOR_CODE_CLOSE, -- Pipspark Thundersnap
-  --     [74038] = "|cffe4f2f5" .. L["Voraazka"] .. FONT_COLOR_CODE_CLOSE, -- Voraazka
-  --   },
-  --   separateLines = {
-  --     [1] = ORANGE_FONT_COLOR_CODE .. L["Fire"] .. FONT_COLOR_CODE_CLOSE,
-  --     [5] = "|cff42a4f5" .. L["Water"] .. FONT_COLOR_CODE_CLOSE,
-  --     [9] = YELLOW_FONT_COLOR_CODE .. L["Earth"] .. FONT_COLOR_CODE_CLOSE,
-  --     [13] = "|cffe4f2f5" .. L["Air"] .. FONT_COLOR_CODE_CLOSE,
-  --   },
-  -- },
-  -- -- Sparks of Life
-  -- ['df-sparks-of-life'] = {
-  --   type = 'any',
-  --   expansion = 9,
-  --   index = 10,
-  --   name = L["Sparks of Life"],
-  --   questID = {
-  --     72646, -- The Waking Shores
-  --     72647, -- Ohn'ahran Plains
-  --     72648, -- The Azure Span
-  --     72649, -- Thaldraszus
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- A Worthy Ally: Loamm Niffen
-  -- ['df-a-worthy-ally-loamm-niffen'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 11,
-  --   name = L["A Worthy Ally: Loamm Niffen"],
-  --   questID = 75665,
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- Fighting is Its Own Reward
-  -- ['df-fighting-is-its-own-reward'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 12,
-  --   name = L["Fighting is Its Own Reward"],
-  --   questID = 76122,
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- Researchers Under Fire
-  -- ['df-researchers-under-fire'] = {
-  --   type = 'list',
-  --   expansion = 9,
-  --   index = 13,
-  --   name = L["Researchers Under Fire"],
-  --   questID = {
-  --     75630, -- Epic
-  --     75629, -- Rare
-  --     75628, -- Uncommon
-  --     75627, -- Common
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   progress = false,
-  --   onlyOnOrCompleted = false,
-  --   questName = {
-  --     [75630] = MAW_BUFF_QUALITY_STRING_EPIC, -- Epic
-  --     [75629] = MAW_BUFF_QUALITY_STRING_RARE, -- Rare
-  --     [75628] = MAW_BUFF_QUALITY_STRING_UNCOMMON, -- Uncommon
-  --     [75627] = MAW_BUFF_QUALITY_STRING_COMMON, -- Common
-  --   },
-  -- },
-  -- -- Disciple of Fyrakk
-  -- ['df-disciple-of-fyrakk'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 14,
-  --   name = L["Disciple of Fyrakk"],
-  --   questID = 75467,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Secured Shipment
-  -- ['df-secured-shipment'] = {
-  --   type = 'any',
-  --   expansion = 9,
-  --   index = 15,
-  --   name = L["Secured Shipment"],
-  --   questID = {
-  --     75525,
-  --     74526,
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Time Rift
-  -- ['df-time-rift'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 16,
-  --   name = L["Time Rift"],
-  --   questID = 77836,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- Dreamsurge
-  -- ['df-dreamsurge'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 17,
-  --   name = L["Shaping the Dreamsurge"],
-  --   questID = 77251,
-  --   reset = 'weekly',
-  --   persists = false,
-  --   fullObjective = false,
-  -- },
-  -- -- A Worthy Ally: Dream Wardens
-  -- ['df-a-worthy-ally-dream-wardens'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 18,
-  --   name = L["A Worthy Ally: Dream Wardens"],
-  --   questID = 78444,
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- The Superbloom
-  -- ['df-the-superbloom'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 19,
-  --   name = L["The Superbloom"],
-  --   questID = 78319,
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- Blooming Dreamseeds
-  -- ['df-blooming-dreamseeds'] = {
-  --   type = 'single',
-  --   expansion = 9,
-  --   index = 20,
-  --   name = L["Blooming Dreamseeds"],
-  --   questID = 78821,
-  --   reset = 'weekly',
-  --   persists = true,
-  --   fullObjective = false,
-  -- },
-  -- -- Shipment of Goods
-  -- ['df-shipment-of-goods'] = {
-  --   type = 'list',
-  --   expansion = 9,
-  --   index = 21,
-  --   name = L["Shipment of Goods"],
-  --   questID = {
-  --     78427, -- Great Crates!
-  --     78428, -- Crate of the Art
-  --   },
-  --   reset = 'weekly',
-  --   persists = false,
-  --   progress = true,
-  --   onlyOnOrCompleted = false,
-  -- },
+  -- Classic
+  --- Ashenvale Weekly
+  ---@type AnyQuestEntry
+  ["battle-for-ashenvale"] = {
+    type = "any",
+    expansion = 1,
+    index = 1,
+    name = L["Battle for Ashenvale"],
+    questID = {
+      79090, -- Repelling Invaders
+      79098 -- Clear the Forest
+    },
+    reset = "weekly",
+    persists = false,
+    fullObjective = false
+  },
 }
+
+
+
+-- fix to ignore entries not for current expansion in classic clients
+---@param entry ProgressEntry
+local isEntryValidForExpansion = function(entry)
+  -- reserve  `-1` index for retail stuff.
+  if SI.isRetail then return true end
+  -- any preset classic entry should require expansion field.
+  assert(entry.expansion, "Preset progress entry for Classic should have the expansion field")
+  -- this should get caught by the `isRetail` check since only retail entries use `-1`
+  if entry.expansion < 0 then return false end
+  -- as of now only era has seasons. if they ever add it to another version of the game this check will require comparing expasionlevel as well.
+  if (entry.seasonID and C_Seasons.GetActiveSeason() == entry.seasonID) then return true end
+  -- accept any entry that is for the current or previous expansion.
+  return entry.expansion <= GetExpansionLevel()
+end
+--- could also just make seperate preset tables for each version of the game and just assign the correct one to `presets` based on the version of the game.
+for key, entry in pairs(presets) do
+  if not isEntryValidForExpansion(entry) then
+    presets[key] = nil
+  end
+end
 
 ---update the progress of quest to the store
 ---@param store QuestStore
@@ -959,17 +1063,18 @@ function Module:OnInitialize()
       User = {},
     }
   end
-
+  --- validate the entries in the account wide Progress database
   for key in pairs(presets) do
     if type(SI.db.Progress.Enable[key]) ~= 'boolean' then
       SI.db.Progress.Enable[key] = true
     end
-
+    
     if type(SI.db.Progress.Order[key]) ~= 'number' then
       SI.db.Progress.Order[key] = 50
     end
   end
-
+  
+  --- validate the entries in the player specific Progress database
   for key in pairs(SI.db.Progress.User) do
     if type(SI.db.Progress.Enable[key]) ~= 'boolean' then
       SI.db.Progress.Enable[key] = true
@@ -979,7 +1084,6 @@ function Module:OnInitialize()
       SI.db.Progress.Order[key] = 50
     end
   end
-
   local map = {
     [1] = 'great-vault-pvp', -- PvP Conquest
     [2] = 'bfa-island', -- Island Expedition
@@ -1004,7 +1108,8 @@ function Module:OnInitialize()
     [22] = 'df-fighting-is-its-own-reward', -- Fighting is Its Own Reward
   }
 
-  for i = 1, 22 do
+  -- remove old entries from saved vars 
+  for i = 1, #map do
     -- enable status migration
     if SI.db.Tooltip['Progress' .. i] ~= nil and map[i] then
       SI.db.Progress.Enable[map[i]] = SI.db.Tooltip['Progress' .. i]
@@ -1012,50 +1117,50 @@ function Module:OnInitialize()
     SI.db.Tooltip['Progress' .. i] = nil
   end
 
-  for _, db in pairs(SI.db.Toons) do
-    if db.Progress then
+  for _, characterData in pairs(SI.db.Toons) do
+    if characterData.Progress then
       -- old database migration
       for oldKey, newKey in pairs(map) do
-        if db.Progress[oldKey] then
-          db.Progress[newKey] = db.Progress[oldKey]
-          db.Progress[oldKey] = nil
+        if characterData.Progress[oldKey] then
+          characterData.Progress[newKey] = characterData.Progress[oldKey]
+          characterData.Progress[oldKey] = nil
         end
       end
 
       -- database cleanup
-      for key in pairs(db.Progress) do
+      for key in pairs(characterData.Progress) do
         if not presets[key] and not SI.db.Progress.User[key] then
-          db.Progress[key] = nil
+          characterData.Progress[key] = nil
         else
           -- check store type
           local entry = presets[key] or SI.db.Progress.User[key]
-          local store = db.Progress[key]
+          local characterStore = characterData.Progress[key]
 
-          if type(store) ~= 'nil' then
+          if type(characterStore) ~= 'nil' then
             -- store contains somethings
             if entry.type == 'list' then
               ---@cast entry QuestListEntry
-              if type(store) ~= 'table' then
+              if type(characterStore) ~= 'table' then
                 -- broken store, should be table
-                db.Progress[key] = {}
+                characterData.Progress[key] = {}
               end
 
               for _, questID in ipairs(entry.questID) do
-                if store[questID] == true then
+                if characterStore[questID] == true then
                   -- simple boolean for list entry
-                  store[questID] = {
+                  characterStore[questID] = {
                     show = true,
                   }
-                elseif type(store[questID]) ~= 'table' then
-                  -- broken store or false, should be table or nil
-                  store[questID] = nil
+                elseif type(characterStore[questID]) ~= 'table' then
+                  -- broken store or `false`, should be table or nil
+                  characterStore[questID] = nil
                 end
               end
             elseif entry.type ~= 'custom' then
               ---@cast entry SingleQuestEntry|AnyQuestEntry
-              if type(store) ~= 'table' then
+              if type(characterStore) ~= 'table' then
                 -- broken store, should be table
-                db.Progress[key] = {}
+                characterData.Progress[key] = {}
               end
             end
           end
@@ -1432,6 +1537,7 @@ do
       index = 0,
       type = 'single',
       name = '',
+      expansion = -1,
       questID = 0,
       reset = "none",
       persists = false,
@@ -1569,7 +1675,7 @@ do
     }
 
     for key, entry in pairs(presets) do
-      if entry.expansion then
+      if entry.expansion and entry.expansion >= 0 then
         if not options.args.Enable.args.Presets.args['Expansion' .. entry.expansion .. 'Header'] then
           options.args.Enable.args.Presets.args['Expansion' .. entry.expansion .. 'Header'] = {
             order = (entry.expansion + 1) * 100,
@@ -1633,6 +1739,7 @@ end
 function Module:ShowTooltip(tooltip, columns, showall, preshow)
   local cpairs = SI.cpairs
   local first = true
+  
   for _, key in ipairs(showall and self.displayAll or self.display) do
     local entry = presets[key] or SI.db.Progress.User[key]
     local show = false
@@ -1647,7 +1754,6 @@ function Module:ShowTooltip(tooltip, columns, showall, preshow)
         break
       end
     end
-
     if show then
       if first then
         preshow()

@@ -1,3 +1,14 @@
+---Notes:
+--- MapID maps to DifficultyID and  ResetInterval in This table: https://wago.tools/db2/MapDifficulty?build=1.15.1.53009&filter[MapID]=48&page=1  
+--- Can use DifficultyID + MapID to get the encounters and names in this table: https://wago.tools/db2/DungeonEncounter?build=1.15.1.53009&filter[Name_lang]=Ghamo&page=1
+--- and to link MapID to lfgDungeonID use the localized named
+
+
+--- This addon overuses saved variables, ideally any saved variables for expired data should be removed. The only long term data we really want to persist is stuff like currency and reputations. any character data without expiry. And maybe some collected/seen info relating to localization strings which the API doesn't directly provide a good way to obtain (ie encounter names).
+
+--- consider caching any data you might need on addon loaded, try to find a good balance between loading everything on demands vs upfront. We also dont want to block the too long comming out of a loading screen.
+
+
 ---@class SavedInstances: AceEvent-3.0, Frame
 ---@field validCurrencies number[]
 ---@field private lastrefreshlocksched number?
@@ -82,7 +93,11 @@ local REDFONT = RED_FONT_COLOR_CODE
 local GREENFONT = GREEN_FONT_COLOR_CODE
 local WHITEFONT = HIGHLIGHT_FONT_COLOR_CODE
 local GRAYFONT = GRAY_FONT_COLOR_CODE
+
 local GRAY_COLOR = GRAY_FONT_COLOR ---@type ColorMixin
+local PURE_GREEN_COLOR = PURE_GREEN_COLOR ---@type ColorMixin
+local RED_FONT_COLOR = RED_FONT_COLOR ---@type ColorMixin
+
 local INSTANCE_SAVED, TRANSFER_ABORT_TOO_MANY_INSTANCES, NO_RAID_INSTANCES_SAVED =
   INSTANCE_SAVED, TRANSFER_ABORT_TOO_MANY_INSTANCES, NO_RAID_INSTANCES_SAVED
 
@@ -373,6 +388,7 @@ end
 ---@field [tooName] {[number]: SavedInstances.DB.Instance.LockoutInfo }  Keyed by [toonName][[difficultyID](https://wago.tools/db2/Difficulty)]
 ---@field LFDupdated number? REMOVED
 ---@field Encounters table? REMOVED
+---@field encountersByDifficulty {[number]: string[]} Keyed by difficultyID to get a list of localized encounter names.
 
 --- The Addon's store. The data in this table is stored in blizzard's `SavedVariables` file for this addon.
 ---@class SavedInstances.DB
@@ -934,7 +950,7 @@ function SI:FindInstance(name, isRaid)
     local normalizedLinkName = nameFromLink and SI:normalizeName(nameFromLink)
     local normalizedID = idFromLink and SI.transInstance[idFromLink]
     if normalizedID and normalizedLinkName == normalizedName then
-      local instanceKey = SI:UpdateInstance(normalizedID)
+      local instanceKey = SI:UpsertInstanceByDungeonID(normalizedID)
       if instanceKey then
         return instanceKey, normalizedID
       end
@@ -968,7 +984,7 @@ function SI:LookupInstance(dungeonID, instanceName, isRaid)
     normalizedName, dungeonID = SI:FindInstance(instanceName, isRaid)
   end
   if dungeonID then -- either found or passed
-    normalizedName = SI:UpdateInstance(dungeonID)
+    normalizedName = SI:UpsertInstanceByDungeonID(dungeonID)
   end
   if normalizedName then
     entry = SI.db.Instances[normalizedName]
@@ -991,8 +1007,8 @@ function SI:LookupInstance(dungeonID, instanceName, isRaid)
       SI:BugReport("SavedInstances: ERROR: Refresh() failed to find instance: "..instanceName.." : "..GetLocale().." : "..(linkDungeonID or "x"))
     end
     entry = {}
-    --SI.db.Instances[name] = instance
   end
+  SI.db.Instances[normalizedName] = entry
   return normalizedName, entry
 end
 
@@ -1354,7 +1370,7 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
   local classColor = userIndicators[category .. "ClassColor"] ~= nil 
                     and userIndicators[category .. "ClassColor"] 
                     or defaultIndicators[category .. "ClassColor"]
-  SI:Debug("ClassColor? %s", classColor and "true" or 'nil')
+                    
   if isExpired then
     color = GRAY_COLOR
   elseif classColor then
@@ -1419,7 +1435,7 @@ function SI:UpdateInstanceData()
   --- Unfortunately those are loaded lazily, and forcing them to load from here can lead to taint.
   --- They are also somewhat incomplete, so instead we just brute force it, which is reasonably fast anyhow
   for dungeonID = 1, MAX_LFG_DUNGEON_ID do
-    local instanceKey, isNewInstance, isBlacklist = SI:UpdateInstance(dungeonID)
+    local instanceKey, isNewInstance, isBlacklist = SI:UpsertInstanceByDungeonID(dungeonID)
     if isNewInstance then
       newInstanceCount = newInstanceCount + 1
     end
@@ -1469,6 +1485,7 @@ function SI:UpdateInstanceData()
           LFDID = boss.lfdid,
           lfgDungeonID = boss.lfdid or 0,
           Raid = true,
+          encountersByDifficulty = {}
         }
       else
           -- update entry incase of miss match
@@ -1568,12 +1585,12 @@ end
 
 --if LFDParentFrame then hooksecurefunc(LFDParentFrame,"Show",function() SI:UpdateInstanceData() end) end
 
---- Updates the `SI.db.Instances` table with information about the instance with the given ID.
+--- Updates/inserts the information pertaining to given ID, in the `SI.db.Instances` table.
 ---@param dungeonID number [LfgDungeonID](https://warcraft.wiki.gg/wiki/LfgDungeonID)
 ---@return string? instanceKey Key used to query this dungeon from the `SI.db.Instances` table. Usually dungeon name, prepended with "LFR: " if an LFR instance.
----@return boolean? isNewInstance True if the instance was added to the database
+---@return boolean? isNewInstance True if the instance was newly added to the database
 ---@return boolean? isBlacklisted True if the instanceID is blacklisted
-function SI:UpdateInstance(dungeonID)
+function SI:UpsertInstanceByDungeonID(dungeonID)
   -- SI:Debug("UpdateInstance: "..id)
   if not dungeonID or dungeonID <= 0 then return end
   -- local lfgName, typeID, subtypeID,
@@ -1685,6 +1702,20 @@ function SI:UpdateInstance(dungeonID)
     return nil, nil, true -- ignore Molten Core holiday version, which has no save
   end
 
+  ---@type SavedInstances.DB.Instance.Entry
+  local newInfo = {
+    LFDID = dungeonID,
+    lfgDungeonID = dungeonID,
+    Show = "saved",
+    RecLevel = recLevel,
+    Raid = (maxPlayers > 5 or (maxPlayers == 0 and typeID == 2)),
+    Random = (typeID == TYPEID_RANDOM_DUNGEON),
+    Holiday = isHoliday and true or false,
+    Expansion = expansionLevel,
+    WorldBoss = nil,
+    Scenario = nil, -- or (subtypeID == LFG_SUBTYPEID_SCENARIO),
+    encountersByDifficulty = {},
+  }
   local isNewInstance = not SI.db.Instances[lfgName]
   if isNewInstance then
     SI:Debug("UpdateInstance: "..dungeonID..
@@ -1693,27 +1724,25 @@ function SI:UpdateInstance(dungeonID)
       " | "..(recLevel or "nil")..
       " | "..(maxPlayers or "nil")
     )
-    ---@type SavedInstances.DB.Instance.Entry
-    SI.db.Instances[lfgName] = {
-      LFDID = dungeonID,
-      lfgDungeonID = dungeonID,
-      Show = "saved",
-      RecLevel = recLevel,
-      Raid = (maxPlayers > 5 or (maxPlayers == 0 and typeID == 2)),
-      Random = (typeID == TYPEID_RANDOM_DUNGEON),
-      Holiday = isHoliday and true or false,
-      Expansion = expansionLevel,
-      WorldBoss = nil,
-      Scenario = nil, -- or (subtypeID == LFG_SUBTYPEID_SCENARIO),
-    }
+    SI.db.Instances[lfgName] = newInfo
   end
 
   -- the following code seems like it should be in the db compatability. Kept it coz unsure if its needed.
   -- Recomended levels for instances stored in saved variables should only be updated when there are level squishes or the dungeonID is changed.
-  local instanceInfo = SI.db.Instances[lfgName] 
-  if not instanceInfo.RecLevel or instanceInfo.RecLevel < 1 then instanceInfo.RecLevel = recLevel end
-  if recLevel > 0 and recLevel < instanceInfo.RecLevel then instanceInfo.RecLevel = recLevel end -- favor non-heroic RecLevel
+  local savedInfo = SI.db.Instances[lfgName] 
+  if not savedInfo.RecLevel or savedInfo.RecLevel < 1 then savedInfo.RecLevel = recLevel end
+  if recLevel > 0 and recLevel < savedInfo.RecLevel then savedInfo.RecLevel = recLevel end -- favor non-heroic RecLevel
   
+  --upsert fields
+  for field, value in pairs(newInfo) do
+    if type(value) ~= nil 
+      and (not savedInfo[field] or type(savedInfo[field] ~= type(value))) 
+    then
+      ---@diagnostic disable-next-line: assign-type-mismatch
+      savedInfo[field] = value
+    end
+  end
+
   return lfgName, isNewInstance
 end
 
@@ -2795,7 +2824,7 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
   local worldboss = instance and instance.WorldBoss
   local lockoutInfo = instance[toon][difficultyID]
   if not lockoutInfo then return end
-  local id = lockoutInfo.ID or 0
+  local lockoutID = lockoutInfo.ID or 0
   local cellHeader = indicatorTip:AddHeader()
   indicatorTip:SetCell(cellHeader, 1, DifficultyString(instanceKey, difficultyID, toon), indicatorTip:GetHeaderFont(), "LEFT", 1)
   indicatorTip:SetCell(cellHeader, 2, GOLDFONT .. instanceKey .. FONTEND, indicatorTip:GetHeaderFont(), "RIGHT", 2)
@@ -2806,20 +2835,20 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
   local EMPH = " !!! "
   if lockoutInfo.Extended then
     indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT .. EMPH .. L["Extended Lockout - Not yet saved"] .. EMPH .. FONTEND,nil,"CENTER",3)
-  elseif lockoutInfo.Locked == false and id > 0 then
+  elseif lockoutInfo.Locked == false and lockoutID > 0 then
     indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT .. EMPH .. L["Expired Lockout - Can be extended"] .. EMPH .. FONTEND,nil,"CENTER",3)
   end
   if lockoutInfo.Expires > 0 then
     indicatorTip:AddLine(YELLOWFONT .. L["Time Left"] .. ":" .. FONTEND, nil, SecondsToTime(instance[toon][difficultyID].Expires - time()))
   end
-  if id > 0 and (
+  if lockoutID > 0 and (
     (instance.Raid and (difficultyID == 5 or difficultyID == 6 or difficultyID == 16)) -- raid: 10 heroic, 25 heroic or mythic
     or
     (difficultyID == 23) -- mythic 5-man
     ) then
     local n = indicatorTip:AddLine()
     indicatorTip:SetCell(n, 1, YELLOWFONT .. ID .. ":" .. FONTEND,nil, "LEFT", 1)
-    indicatorTip:SetCell(n, 2, id,nil, "RIGHT", 2)
+    indicatorTip:SetCell(n, 2, lockoutID,nil, "RIGHT", 2)
   end
   if lockoutInfo.Link then
     local link = lockoutInfo.Link
@@ -2867,28 +2896,44 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
         indicatorTip:SetCell(indicatorTip:AddLine(),1,coloredText(left),nil,"CENTER",3)
       end
     end
-    if not isTooltipParsed then
-      local exceptions = SI:instanceException(instance.lfgDungeonID)
-      local bits = tonumber(link:match(":(%d+)\124h"))
-      if exceptions and bits then
-        for i=1,exceptions.total do
-          local lineIdx = indicatorTip:AddLine()
-          indicatorTip:SetCell(lineIdx, 1, exceptions[i], nil, "LEFT", 2)
+    -- in classic there is no tooltip for the saved instances hyperlink (not sure if bug or intedned)
+    if not isTooltipParsed then 
+      local hardCodedTranslations = SI:instanceException(instance.lfgDungeonID)
+      local encounterBitField = tonumber(link:match(":(%d+)\124h"))
+      if hardCodedTranslations and encounterBitField then
+        for i = 1, hardCodedTranslations.total do
+          local newLine = indicatorTip:AddLine()
+          indicatorTip:SetCell(newLine, 1, hardCodedTranslations[i], nil, "LEFT", 2)
           local text = "\124cff00ff00"..BOSS_ALIVE.."\124r"
-          if bit.band(bits,1) > 0 then
+          if bit.band(encounterBitField,1) > 0 then
             text = "\124cffff1f1f"..BOSS_DEAD.."\124r"
           end
-          indicatorTip:SetCell(lineIdx, 3, text,nil, "RIGHT", 1)
-          bits = bit.rshift(bits,1)
+          indicatorTip:SetCell(newLine, 3, text,nil, "RIGHT", 1)
+          encounterBitField = bit.rshift(encounterBitField,1)
         end
-      else
+      else -- no hardcoded list of encounters in the exceptions table (this should be the default)
+        if lockoutInfo.encounters then
+          for i = 1, #lockoutInfo.encounters do
+            local bossName = lockoutInfo.encounters[i].localizedName
+            local isComplete = lockoutInfo.encounters[i].isComplete
+            local newLine = indicatorTip:AddLine()
+            indicatorTip:SetCell(newLine, 1, bossName, nil, "LEFT", 2)
+
+            local progressText = isComplete and RED_FONT_COLOR:WrapTextInColorCode(BOSS_DEAD)
+            or PURE_GREEN_COLOR:WrapTextInColorCode(BOSS_ALIVE)
+
+            indicatorTip:SetCell(newLine, 3, progressText, nil, "RIGHT", 1)
+          end
+        else
         indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT ..
           L["Boss kill information is missing for this lockout.\nThis is a Blizzard bug affecting certain old raids."] ..
           FONTEND,nil,"CENTER",3)
+        end
       end
     end
   end
-  if id < 0 then
+  --- For LFR and world bosses
+  if lockoutID < 0 then
     local killed, total, base, remap = SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
     for i=base,base+total-1 do
       local bossid = i
@@ -3149,14 +3194,14 @@ function SI:OnInitialize()
   SavedInstancesDB = SavedInstancesDB or SI.defaultDB
 
   -- begin any database migrations
-if not SavedInstancesDB.DBVersion 
-  or SavedInstancesDB.DBVersion < 10 
-then
+if not SavedInstancesDB.DBVersion or SavedInstancesDB.DBVersion < 10 then
   -- reset savedVars to defaultDB for any version < 10
   SavedInstancesDB = SI.defaultDB
   SavedInstancesDB.DBVersion = 10
-elseif SavedInstancesDB.DBVersion < 12 then
-  -- version 12 adds indicators
+end
+-- Version 12 
+if SavedInstancesDB.DBVersion < 12 then
+  -- adds indicators
   SavedInstancesDB.Indicators = SI.defaultDB.Indicators  
   -- removed unused or deprecated `Toon` fields  
   for _, toonData in pairs(SavedInstancesDB.Toons) do
@@ -3165,9 +3210,11 @@ elseif SavedInstancesDB.DBVersion < 12 then
     toonData.Artifact = nil
     toonData.Cloak = nil
   end
-    SavedInstancesDB.DBVersion = 12
-  end
-  -- end backwards compatibilty
+  SavedInstancesDB.DBVersion = 12
+end
+if SavedInstancesDB.DBVersion < 13 then
+end
+-- end backwards compatibilty
   
   -- preserve db if function is ran while `SI.db` is still in scope
   ---@class SavedInstances.DB
@@ -3247,9 +3294,9 @@ elseif SavedInstancesDB.DBVersion < 12 then
     text = "SI",
     type = "launcher",
     icon = "Interface\\Addons\\SavedInstances\\Media\\Icon.tga",
-    OnEnter = function(frame)
+    OnEnter = function(self)
       if not Tooltip:IsDetached() and not SI.db.Tooltip.DisableMouseover then
-        SI:ShowTooltip(frame)
+        SI:ShowTooltip(self)
       end
     end,
     OnLeave = function(frame) end,
@@ -3965,34 +4012,45 @@ function SI:Refresh(recoverDailies)
 
 --- Re-populate lockout info using `GetSavedInstanceInfo`, this info is stored in saved vars. 
   local numSaved = GetNumSavedInstances()
-  SI:Debug("Refresh: "..numSaved.." instances")
+  SI:Debug("Refreshing %i instance(s) for %s", numSaved, SI.thisToon)
   if numSaved > 0 then
     for i = 1, numSaved do
       local name, lockoutID, lockoutDuration, diffID, isLocked,
         isExtended, _, isRaid, maxPlayers, 
         diffName, numEncounters, numCompleted = GetSavedInstanceInfo(i)
-      ---@type {localizedName: string, isCompleted: boolean}[]
+      local _, dungeonID = SI:FindInstance(name, isRaid)
+      if not dungeonID then
+        SI:Debug("Saved to unknown Instance: %s. Not recording it. Please report this issue.", name);
+        return;
+      end      
+      local instanceKey, instanceEntry = SI:LookupInstance(nil, name, isRaid)
+
+      ---@type {localizedName: string, isCompleted: boolean?}[]
       local encounters = {}
       for j = 1, numEncounters do
         local bossName, _, isKilled = GetSavedInstanceEncounterInfo(i, j)
         encounters[j] = { localizedName = bossName, isComplete = isKilled }
       end
+      
       local lockoutExpiry = lockoutDuration and (lockoutDuration + time()) or 0
-      local instanceKey, instanceEntry = SI:LookupInstance(nil, name, isRaid)
       -- SI:Debug("instanceKey %s | reset time %d ", instanceKey or "nil", lockoutExpiry or 69);
-      if not instanceEntry.lfgDungeonID then -- ie unreferenced empty table returned
-        ---@cast instanceEntry SavedInstances.DB.Instance.Entry
-        -- add ref for table in the db
-        SI.db.Instances[instanceKey] = instanceEntry
-        -- now local table can be modified and changes will be reflected in db
-        instanceEntry.lfgDungeonID = instanceEntry.lfgDungeonID
-        instanceEntry.Raid = isRaid
-      end
-      --- add this character into the instance entry's toon table
-      instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or {}
-      ---@type SavedInstances.DB.Instance.LockoutInfo
-      instanceEntry[SI.thisToon][diffID] = {
-        ID = lockoutID,
+      
+      
+      -- If an unreferenced empty table is returned from `LookupInstance`
+      if not instanceEntry.lfgDungeonID 
+        or not SI.db.Instances[instanceKey]
+        then 
+          ---@cast instanceEntry SavedInstances.DB.Instance.Entry
+          -- add ref in the db so table can be modified.
+          SI.db.Instances[instanceKey] = instanceEntry
+          instanceEntry.lfgDungeonID = instanceEntry.lfgDungeonID
+          instanceEntry.Raid = isRaid
+        end
+        --- add this character into the instance entry's toon table
+        instanceEntry[SI.thisToon] = instanceEntry[SI.thisToon] or {}
+        ---@type SavedInstances.DB.Instance.LockoutInfo
+        instanceEntry[SI.thisToon][diffID] = {
+          ID = lockoutID,
         Expires = lockoutExpiry,
         Link = GetSavedInstanceChatLink(i),
         Locked = isLocked,
@@ -4001,6 +4059,12 @@ function SI:Refresh(recoverDailies)
         numEncounters = numEncounters,
         numCompleted = numCompleted
       }
+
+      -- update the instances db with info from this lockout.
+      ViragDevTool:AddData(instanceEntry, "entry")
+      assert(instanceEntry.encountersByDifficulty, "encountersByDifficulty is nil")
+      instanceEntry.encountersByDifficulty[diffID] = instanceEntry.encountersByDifficulty[diffID] or {}
+      instanceEntry.encountersByDifficulty[diffID] = encounters
     end
   end
 
@@ -4320,7 +4384,8 @@ end
 SI.scaleCache = {}
 
 --- The function responsible for generating the addons minimap saved instances tooltip
-function SI:ShowTooltip(anchorframe)
+---@param anchor Frame
+function SI:ShowTooltip(anchor)
   local showall = ShowAll()
   if Tooltip:IsTooltipShown() and
     SI.showall == showall and
@@ -4333,8 +4398,7 @@ function SI:ShowTooltip(anchorframe)
   local showexpired = showall or SI.db.Tooltip.ShowExpired
   local tooltip = Tooltip:AcquireTooltip()
   tooltip:SetCellMarginH(0)
-  --todo no field injection. define earlier (in module possibly)
-  tooltip.anchorframe = anchorframe
+  tooltip.anchorframe = anchor
   tooltip:SetScript("OnUpdate", UpdateTooltip)
   tooltip:Clear()
   SI.scale = SI.scaleCache[showall] or SI.db.Tooltip.Scale
@@ -5388,7 +5452,7 @@ function SI:ShowTooltip(anchorframe)
     SI.scaleCache[showall] = nil
     --SI:ShowTooltip(anchorframe)
     -- reschedule continuation to reduce time-slice exceeded errors in combat
-    SI:ScheduleTimer("ShowTooltip", 0, anchorframe)
+    SI:ScheduleTimer("ShowTooltip", 0, anchor)
   else -- render it
     SI:SkinFrame(tooltip,"SavedInstancesTooltip")
     if Tooltip:IsDetached() then
@@ -5400,8 +5464,8 @@ function SI:ShowTooltip(anchorframe)
       tooltip:SetPoint("BOTTOMLEFT", detachFrame)
       tooltip:SetFrameLevel(detachFrame:GetFrameLevel() + 1)
     else
-      tooltip:SmartAnchorTo(anchorframe)
-      tooltip:SetAutoHideDelay(0.1, anchorframe)
+      tooltip:SmartAnchorTo(anchor)
+      tooltip:SetAutoHideDelay(0.1, anchor)
       tooltip:Show()
     end
     if SI.db.Tooltip.FitToScreen then
@@ -5421,7 +5485,7 @@ function SI:ShowTooltip(anchorframe)
         tooltip:SetScale(scale)
         tooltip:Hide()
         SI.scaleCache[showall] = scale
-        SI:ScheduleTimer("ShowTooltip", 0, anchorframe) -- re-render fonts
+        SI:ScheduleTimer("ShowTooltip", 0, anchor) -- re-render fonts
       end
     end
   end
