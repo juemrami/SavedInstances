@@ -55,6 +55,40 @@ end
 function Module:AcquireIndicatorTip(...)
   ---@class QTip : LibQTip.Tooltip
   indicatorTip = QTip:Acquire('SavedInstancesIndicatorTooltip', ...)
+  indicatorTip.AddQuestDescription = indicatorTip.AddQuestDescription
+    or function(questLink)
+      --- this is an experimental feature added using the classic clients. Might need debugging for retail
+      if SI.isRetail then
+        return
+      end
+      GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")  
+      SI.ScanTooltip:SetHyperlink(questLink)
+
+      local getLineProps = function(lineName) 
+        local fontString = _G[SI.ScanTooltip:GetName()..lineName] ---@type FontString?
+        if fontString then
+          assert(
+            fontString.GetText, 
+            "Object does not have a `GetText` method. Failed parsing tooltip for quest"
+          )
+          return fontString:GetText(), fontString:GetFontObject(), fontString:GetTextColor()
+        end 
+      end
+      -- Get Quest Description from Tooltip
+      for lineIdx = 1, SI.ScanTooltip:NumLines() do
+        local text = getLineProps("TextLeft"..lineIdx)
+        if text and text:gsub("%s", "") == "" then
+          -- quest description (always?) comes after first line break
+          local text, font, colorR, colorG, colorB = getLineProps("TextLeft"..(lineIdx + 1))
+          local line = indicatorTip:AddLine()
+          indicatorTip:SetCell(line, 1, text, font , nil, nil, nil, nil, nil, 300)
+          indicatorTip:SetLineTextColor(line, colorR, colorG, colorB)
+          break
+        end
+      end
+      -- make sure to hide the Helper tooltip after we're done with it
+      SI.ScanTooltip:Hide()
+    end
   indicatorTip.anchorframe = nil
   indicatorTip:Clear()
   indicatorTip:SetHeaderFont(getHeaderFont())

@@ -239,65 +239,146 @@ end
 function Module:UpdateCurrency()
   if SI.logout then return end -- currency is unreliable during logout
 
-  local t = SI.db.Toons[SI.thisToon]
-  t.Money = GetMoney()
-  t.currency = t.currency or {}
+  local playerStore = SI.db.Toons[SI.thisToon]
+  playerStore.Money = GetMoney()
+  playerStore.currency = playerStore.currency or {}
 
   local covenantID = C_Covenants_GetActiveCovenantID and C_Covenants_GetActiveCovenantID()
-  for _,idx in ipairs(currency) do
-    local data = C_CurrencyInfo_GetCurrencyInfo(idx)
-    if not data or (not data.discovered and not hiddenCurrency[idx]) then
-      t.currency[idx] = nil
+  for _,currencyID in ipairs(currency) do
+    local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
+    if not data or (not data.discovered and not hiddenCurrency[currencyID]) then
+      playerStore.currency[currencyID] = nil
     else
-      local ci = t.currency[idx] or {}
-      ci.amount = data.quantity
-      ci.totalMax = data.maxQuantity
-      ci.earnedThisWeek = data.quantityEarnedThisWeek
-      ci.weeklyMax = data.maxWeeklyQuantity
+      local currencyInfo = playerStore.currency[currencyID] or {}
+      currencyInfo.amount = data.quantity
+      currencyInfo.totalMax = data.maxQuantity
+      currencyInfo.earnedThisWeek = data.quantityEarnedThisWeek
+      currencyInfo.weeklyMax = data.maxWeeklyQuantity
       if data.useTotalEarnedForMaxQty then
-        ci.totalEarned = data.totalEarned
+        currencyInfo.totalEarned = data.totalEarned
       end
       -- handle special currency
-      if specialCurrency[idx] then
-        local tbl = specialCurrency[idx]
-        if tbl.weeklyMax then ci.weeklyMax = tbl.weeklyMax end
+      if specialCurrency[currencyID] then
+        local tbl = specialCurrency[currencyID]
+        if tbl.weeklyMax then currencyInfo.weeklyMax = tbl.weeklyMax end
         if tbl.earnByQuest then
-          ci.earnedThisWeek = 0
+          currencyInfo.earnedThisWeek = 0
           for _, questID in ipairs(tbl.earnByQuest) do
             if C_QuestLog_IsQuestFlaggedCompleted(questID) then
-              ci.earnedThisWeek = ci.earnedThisWeek + 1
+              currencyInfo.earnedThisWeek = currencyInfo.earnedThisWeek + 1
             end
           end
         end
         if tbl.relatedItem then
-          ci.relatedItemCount = GetItemCount(tbl.relatedItem.id)
+          currencyInfo.relatedItemCount = GetItemCount(tbl.relatedItem.id)
         end
-      elseif covenantID and idx == 1822 then -- Renown
+      elseif covenantID and currencyID == 1822 then -- Renown
         -- plus one to amount and totalMax
-        ci.amount = ci.amount + 1
-        ci.totalMax = ci.totalMax + 1
+        currencyInfo.amount = currencyInfo.amount + 1
+        currencyInfo.totalMax = currencyInfo.totalMax + 1
         if covenantID > 0 then
-          ci.covenant = ci.covenant or {}
-          ci.covenant[covenantID] = ci.amount
+          currencyInfo.covenant = currencyInfo.covenant or {}
+          currencyInfo.covenant[covenantID] = currencyInfo.amount
         end
-      elseif covenantID and (idx == 1810 or idx == 1813) then -- Redeemed Soul and Reservoir Anima
+      elseif covenantID and (currencyID == 1810 or currencyID == 1813) then -- Redeemed Soul and Reservoir Anima
         if covenantID > 0 then
-          ci.covenant = ci.covenant or {}
-          ci.covenant[covenantID] = ci.amount
+          currencyInfo.covenant = currencyInfo.covenant or {}
+          currencyInfo.covenant[covenantID] = currencyInfo.amount
         end
-      elseif idx == 2774 then -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
+      elseif currencyID == 2774 then -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
         local duration = SI:GetNextWeeklyResetTime() - 1699365600 -- 2023-11-07T14:00:00+00:00
-        ci.totalMax = floor(duration / 604800) -- 7 days
+        currencyInfo.totalMax = floor(duration / 604800) -- 7 days
       end
       -- don't store useless info
-      if ci.weeklyMax == 0 then ci.weeklyMax = nil end
-      if ci.totalMax == 0 then ci.totalMax = nil end
-      if ci.earnedThisWeek == 0 then ci.earnedThisWeek = nil end
-      if ci.totalEarned == 0 then ci.totalEarned = nil end
-      t.currency[idx] = ci
+      if currencyInfo.weeklyMax == 0 then currencyInfo.weeklyMax = nil end
+      if currencyInfo.totalMax == 0 then currencyInfo.totalMax = nil end
+      if currencyInfo.earnedThisWeek == 0 then currencyInfo.earnedThisWeek = nil end
+      if currencyInfo.totalEarned == 0 then currencyInfo.totalEarned = nil end
+      playerStore.currency[currencyID] = currencyInfo
     end
   end
 end
+--- There is no designated currency api in classic. all currencies are treated as items. 
+local classicCurrencies = {
+  -- Holiday Currency
+  19182, -- Darkmoon Faire Prize Ticket
+  21100, -- Coin of Ancestry
+
+  -- ZG Bijous + Coins
+  19698, -- Zulian Coin
+  19699, -- Razzashi Coin
+  19700, -- Hakkari Coin
+  19701, -- Gurubashi Coin
+  19702, -- Vilebranch Coin
+  19703, -- Witherbark Coin
+  19704, -- Sandfury Coin
+  19705, -- Skullsplitter Coin
+  19706, -- Bloodscalp Coin
+  19707, -- Red Hakkari Bijou
+  19708, -- Blue Hakkari Bijou
+  19709, -- Yellow Hakkari Bijou
+  19710, -- Orange Hakkari Bijou
+  19711, -- Green Hakkari Bijou
+  19712, -- Purple Hakkari Bijou
+  19713, -- Bronze Hakkari Bijou
+  19714, -- Silver Hakkari Bijou
+  19715, -- Gold Hakkari Bijou
+
+  -- Battleground Rewards
+  19322, -- Warsong Mark of Honor
+  20558, -- Warsong Gulch Mark of Honor
+  20559, -- Arathi Basin Mark of Honor
+  20560, -- Alterac Valley Mark of Honor
+
+  -- AQ Scarabs + Idols
+  20858, -- Stone Scarab
+  20859, -- Gold Scarab
+  20860, -- Silver Scarab
+  20861, -- Bronze Scarab
+  20862, -- Crystal Scarab
+  20863, -- Clay Scarab
+  20864, -- Bone Scarab
+  20865, -- Ivory Scarab
+  20866, -- Azure Idol
+  20867, -- Onyx Idol
+  20868, -- Lambent Idol
+  20869, -- Amber Idol
+  20870, -- Jasper Idol
+  20871, -- Obsidian Idol
+  20872, -- Vermillion Idol
+  20873, -- Alabaster Idol
+  20874, -- Idol of the Sun
+  20875, -- Idol of Night
+  20876, -- Idol of Death
+  20877, -- Idol of the Sage
+  20878, -- Idol of Rebirth
+  20879, -- Idol of Life
+  20881, -- Idol of Strife
+  20882, -- Idol of War
+
+  -- Naxx Gear Reagents
+  22373, -- Wartorn Leather Scrap
+  22374, -- Wartorn Chain Scrap
+  22375, -- Wartorn Plate Scrap
+  22376, -- Wartorn Cloth Scrap
+
+  -- Argent Dawn Related
+  12840, -- Minion's Scourgestone
+  12841, -- Invader's Scourgestone
+  12843, -- Corruptor's Scourgestone
+  12844, -- Argent Dawn Valor Token
+  22523, -- Insignia of the Dawn
+  22524, -- Insignia of the Crusade
+
+  -- Silithus Quests
+  20800, -- Cenarion Logistics Badge
+  20801, -- Cenarion Tactical Badge
+  20802, -- Cenarion Combat Badge
+
+  -- MC
+  17333, -- Aqual Quintessence
+  22754, -- Eternal Quintessence
+}
 
 function Module:UpdateCurrencyItem()
   if not SI.db.Toons[SI.thisToon].currency then return end
@@ -307,4 +388,12 @@ function Module:UpdateCurrencyItem()
       SI.db.Toons[SI.thisToon].currency[currencyID].relatedItemCount = GetItemCount(tbl.relatedItem.id)
     end
   end
+  if SI.isClassicEra then
+    for _, currencyID in ipairs(classicCurrencies) do
+      local currencyInfo = SI.db.Toons[SI.thisToon].currency[currencyID] or {}
+      currencyInfo.relatedItemCount = GetItemCount(currencyID)
+      SI.db.Toons[SI.thisToon].currency[currencyID] = currencyInfo
+    end
+  end
 end
+

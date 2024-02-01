@@ -15,6 +15,7 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field questID number
 ---@field reset "none" | "daily" | "weekly"
 ---@field persists boolean # if progress persists after reset period
+---@field disabled boolean|function? # used to disable the preset on init (ie diff game version).
 ---@field fullObjective boolean
 
 ---@class AnyQuestEntry
@@ -57,7 +58,6 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field relatedQuest number[]?
 ---@field difficultyNames table<number, string>? # desc needed
 ---@field factionIDs number[]? # desc needed
----@field seasonID Enum.SeasonID? # used for classic era preset entries
 
 ---@alias ProgressEntry SingleQuestEntry | AnyQuestEntry | QuestListEntry | CustomEntry
 
@@ -76,6 +76,11 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field show boolean?
 ---@field [number] QuestStore?
 
+local GetTitleForQuestID = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo
+local englishToQuestFaction = {
+  ["Alliance"] = LE_QUEST_FACTION_ALLIANCE,
+  ["Horde"] = LE_QUEST_FACTION_HORDE
+}
 
 ---@type table<string, ProgressEntry>
 local presets = {
@@ -781,42 +786,51 @@ local presets = {
   },
 
   -- Classic
-  --- Ashenvale Weekly
-  ---@type AnyQuestEntry
-  ["battle-for-ashenvale"] = {
-    type = "any",
-    expansion = 1,
+  --- Ashenvale Weeklies (S0D)
+  ---@type SingleQuestEntry
+  ["ashenvale-alliance-weeky"] = {
+    type = "single",
+    expansion = 0, -- LE_EXPANSION_CLASSIC
     index = 1,
-    name = L["Battle for Ashenvale"],
-    questID = {
-      79090, -- Repelling Invaders
-      79098 -- Clear the Forest
-    },
+    questID = 79090, -- Repelling Invaders (alliance)
+    name = GetTitleForQuestID(79090) or L["Repelling Invaders"],
     reset = "weekly",
     persists = false,
-    fullObjective = false
+    fullObjective = true,
+    disabled = (not SI.isSoD) or (englishToQuestFaction[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_ALLIANCE)
+  },
+  ---@type SingleQuestEntry
+  ["ashenvale-horde-weeky"] = {
+    type = "single",
+    expansion = 0, -- LE_EXPANSION_CLASSIC
+    index = 1,
+    questID = 79098, -- Clear the Forest (horde)
+    name = GetTitleForQuestID(79098) or L["Clear the Forest"],
+    reset = "weekly",
+    persists = false,
+    fullObjective = true,
+    disabled = (not SI.isSoD) or (englishToQuestFaction[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_HORDE)   
   },
 }
 
-
-
 -- fix to ignore entries not for current expansion in classic clients
 ---@param entry ProgressEntry
-local isEntryValidForExpansion = function(entry)
-  -- reserve  `-1` index for retail stuff.
-  if SI.isRetail then return true end
-  -- any preset classic entry should require expansion field.
-  assert(entry.expansion, "Preset progress entry for Classic should have the expansion field")
-  -- this should get caught by the `isRetail` check since only retail entries use `-1`
-  if entry.expansion < 0 then return false end
-  -- as of now only era has seasons. if they ever add it to another version of the game this check will require comparing expasionlevel as well.
-  if (entry.seasonID and C_Seasons.GetActiveSeason() == entry.seasonID) then return true end
+local isEntryValid = function(entry)
+  if (type(entry.disabled) == "function" and entry.disabled()) 
+  or entry.disabled 
+  then return false end
+
+  -- let the `-1` index be reserved for retail stuff.
+  if SI.isRetail then return true
+  elseif entry.expansion < 0 then return false end
+
   -- accept any entry that is for the current or previous expansion.
   return entry.expansion <= GetExpansionLevel()
 end
+
 --- could also just make seperate preset tables for each version of the game and just assign the correct one to `presets` based on the version of the game.
 for key, entry in pairs(presets) do
-  if not isEntryValidForExpansion(entry) then
+  if not isEntryValid(entry) then
     presets[key] = nil
   end
 end
@@ -835,14 +849,14 @@ local function UpdateQuestStore(store, questID)
     return true
   elseif not C_QuestLog.IsOnQuest(questID) then
     store.show = false
-
     return false
   else
     local showText
     local allFinished = true
-    -- Wotlk client compatibility, these API's will likely be made available for Cataclysm classic.
     local GetQuestObjectiveInfo = GetQuestObjectiveInfo
     local GetNumQuestObjectives = C_QuestLog.GetNumQuestObjectives
+
+    -- Wotlk/Era client compatibility, these API's will likely be made available for Cataclysm classic.
     if not (GetQuestObjectiveInfo and GetNumQuestObjectives) then
       local objectives = C_QuestLog.GetQuestObjectives(questID)
       GetNumQuestObjectives = function()
@@ -856,6 +870,7 @@ local function UpdateQuestStore(store, questID)
           objectives[index].numRequired
       end
     end
+
     local leaderboardCount = GetNumQuestObjectives(questID)
     for i = 1, leaderboardCount do
       local text, objectiveType, finished, numFulfilled, numRequired = GetQuestObjectiveInfo(questID, i, false)
@@ -868,7 +883,6 @@ local function UpdateQuestStore(store, questID)
       allFinished = allFinished and finished
 
       local objectiveText
-      -- "progressbar" objectective dont yet exist in Wotlk, so this branch should never execute.
       if objectiveType == 'progressbar' then
         numFulfilled = GetQuestProgressBarPercent(questID)
         numRequired = 100
@@ -974,18 +988,27 @@ local function TooltipQuestStore(_, arg)
   tip:AddHeader(SI:ClassColorToon(toon), entry.name)
 
   if store.isComplete then
-    tip:AddLine(SI.questCheckMark)
+    local line = tip:AddLine()
+    tip:SetCell(line, 1, ("%s %s"):format(QUEST_COMPLETE, SI.questCheckMark), nil, 'LEFT', 2)
   elseif store.isFinish then
-    tip:AddLine(SI.questTurnin)
+    local line = tip:AddLine(SI.questTurnin)
+    tip:SetCell(line, 1, ("%s %s"):format(QUEST_WATCH_QUEST_READY, SI.questTurnin), nil, 'LEFT', 2)
   elseif store.leaderboardCount and store.leaderboardCount > 0 then
+    tip:AddLine(IN_PROGRESS)
     for i = 1, store.leaderboardCount do
       tip:AddLine("")
       tip:SetCell(i + 1, 1, store[i], nil, 'LEFT', 2)
     end
   end
-
-  tip:Show()
-end
+  local questID = type(entry.questID) == "number" and entry.questID
+  if questID then
+    local link = LinkUtil.FormatLink("quest", questID , questID, SI.db.Toons[toon].Level) --[[@as string]]
+    SI:Debug("Generating tooltip using quest hyperlink: [%s]", link)
+    link = link:gsub('|', '\124')
+    tip.AddQuestDescription(link)
+    tip:Show()
+  end
+end 
 
 ---handle tooltip of quest list
 local function TooltipQuestListStore(_, arg)
@@ -1739,16 +1762,14 @@ end
 function Module:ShowTooltip(tooltip, columns, showall, preshow)
   local cpairs = SI.cpairs
   local first = true
-  
   for _, key in ipairs(showall and self.displayAll or self.display) do
     local entry = presets[key] or SI.db.Progress.User[key]
     local show = false
-    for _, t in cpairs(SI.db.Toons, true) do
-      local store = t.Progress and t.Progress[key]
-      if (
-        showall or
+    for _, characterData in cpairs(SI.db.Toons, true) do
+      local store = characterData.Progress and characterData.Progress[key]
+      if (showall or
         (entry.type ~= 'custom' and store and store.show) or
-        (entry.type == 'custom' and store and entry.showFunc(store, entry--[[@as CustomEntry]]))
+        (entry.type == 'custom' and store and entry.showFunc(store, entry --[[@as CustomEntry]]))
       ) then
         show = true
         break

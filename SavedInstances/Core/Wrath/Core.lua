@@ -106,7 +106,7 @@ ALREADY_LOOTED = ALREADY_LOOTED:gsub("（.*）","") -- fix on zhCN and zhTW
 
 local currency = SI.validCurrencies
 local QuestExceptions = SI.QuestExceptions
-local TimewalkingItemQuest = {} -- SI.TimewalkingItemQuest
+local TimewalkingItemQuest = SI.TimewalkingItemQuest
 
 local Config = SI:GetModule('Config')
 local Tooltip = SI:GetModule('Tooltip')
@@ -825,7 +825,7 @@ local function TableLen(table)
 end
 
 function SI:QuestIgnored(questID)
-  if (TimewalkingItemQuest[questID]) and SI.activeHolidays then
+  if (SI.isRetail and TimewalkingItemQuest[questID]) and SI.activeHolidays then
     -- Timewalking Item Quests
     if SI.activeHolidays[TimewalkingItemQuest[questID]] then
       -- Timewalking Weedend Event ONGOING
@@ -2013,7 +2013,7 @@ function SI:UpdateToonData()
         -- toonData.currency = toonData.currency or {} -- defined on init
         for _, currencyID in ipairs(SI.validCurrencies) do
           local currency = toonData.currency[currencyID]
-          if currency then
+          if currency and currency.earnedThisWeek then
             currency.earnedThisWeek = 0
           end
         end
@@ -2106,9 +2106,9 @@ function SI:UpdateToonData()
       currentToonData.XP = nil
       currentToonData.RestXP = nil
     end
-    currentToonData.Warmode = C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired() or nil
-    currentToonData.Covenant = C_Covenants and C_Covenants.GetActiveCovenantID() or nil
-    currentToonData.MythicPlusScore = C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore()
+    currentToonData.Warmode = SI.isRetail and C_PvP.IsWarModeDesired() or nil
+    currentToonData.Covenant = SI.isRetail and C_Covenants.GetActiveCovenantID() or nil
+    currentToonData.MythicPlusScore = SI.isRetail and C_ChallengeMode.GetOverallDungeonScore() or nil
   end
 
   currentToonData.LastSeen = currentTimestamp
@@ -3131,7 +3131,7 @@ function SI:toonInit()
     end
     local level = UnitLevel("player")
     local isLevelCap = level == SI.maxLevel
-    local zone = GetRealZoneText()
+    local zone = GetRealZoneText() -- this function returns nil sometimes.
     return {
       Class = classFile,
       LClass = localizedClass,
@@ -3141,7 +3141,7 @@ function SI:toonInit()
       Level = UnitLevel("player"),
       Show = "saved",
       Order = 50,
-      Zone = #zone > 0 and zone or nil,
+      Zone = (zone and #zone > 0) and zone or nil,
       Quests = {},
       Skills = {},
       Progress = {},
@@ -3155,9 +3155,11 @@ function SI:toonInit()
       isResting = IsResting(),
       Money = 0,
       LastSeen = time(),
-      -- Covenant = C_Covenants.GetActiveCovenantID(),
-      -- MythicPlusScore = C_ChallengeMode.GetOverallDungeonScore(),
-      -- Warmode = C_PvP.IsWarModeDesired(),
+
+      --- these are initialized in original code. 
+      Covenant = SI.isRetail and C_Covenants.GetActiveCovenantID() or nil,
+      MythicPlusScore = SI.isRetail and C_ChallengeMode.GetOverallDungeonScore() or nil,
+      Warmode = SI.isRetail and C_PvP.IsWarModeDesired() or nil,
     } --[[@as SavedInstances.Toon]]
   end
 
@@ -4061,7 +4063,7 @@ function SI:Refresh(recoverDailies)
       }
 
       -- update the instances db with info from this lockout.
-      ViragDevTool:AddData(instanceEntry, "entry")
+      -- ViragDevTool:AddData(instanceEntry, "entry")
       assert(instanceEntry.encountersByDifficulty, "encountersByDifficulty is nil")
       instanceEntry.encountersByDifficulty[diffID] = instanceEntry.encountersByDifficulty[diffID] or {}
       instanceEntry.encountersByDifficulty[diffID] = encounters
@@ -4775,50 +4777,50 @@ function SI:ShowTooltip(anchor)
   end
 
   do
-    local showd, showw
-    for toon, t in cpairs(SI.db.Toons, true) do
-      local dc, wc = SI:QuestCount(toon)
-      if dc > 0 and (SI.db.Tooltip.TrackDailyQuests or showall) then
-        showd = true
-        addColumns(columns, toon, tooltip)
+    local showDailies, showWeeklies
+    for toonName, t in cpairs(SI.db.Toons, true) do
+      local dailyCount, weeklyCount = SI:QuestCount(toonName)
+      if dailyCount > 0 and (SI.db.Tooltip.TrackDailyQuests or showall) then
+        showDailies = true
+        addColumns(columns, toonName, tooltip)
       end
-      if wc > 0 and (SI.db.Tooltip.TrackWeeklyQuests or showall) then
-        showw = true
-        addColumns(columns, toon, tooltip)
+      if weeklyCount > 0 and (SI.db.Tooltip.TrackWeeklyQuests or showall) then
+        showWeeklies = true
+        addColumns(columns, toonName, tooltip)
       end
     end
     local adc, awc = SI:QuestCount(nil)
-    if adc > 0 and (SI.db.Tooltip.TrackDailyQuests or showall) then showd = true end
-    if awc > 0 and (SI.db.Tooltip.TrackWeeklyQuests or showall) then showw = true end
-    if SI.db.Tooltip.CategorySpaces and (showd or showw) then
+    if adc > 0 and (SI.db.Tooltip.TrackDailyQuests or showall) then showDailies = true end
+    if awc > 0 and (SI.db.Tooltip.TrackWeeklyQuests or showall) then showWeeklies = true end
+    if SI.db.Tooltip.CategorySpaces and (showDailies or showWeeklies) then
       addsep()
     end
-    if showd then
-      showd = tooltip:AddLine(YELLOWFONT .. L["Daily Quests"] .. (adc > 0 and " ("..adc..")" or "") .. FONTEND)
+    if showDailies then
+      showDailies = tooltip:AddLine(YELLOWFONT .. L["Daily Quests"] .. (adc > 0 and " ("..adc..")" or "") .. FONTEND)
       if adc > 0 then
-        tooltip:SetCellScript(showd, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,adc,true})
-        tooltip:SetCellScript(showd, 1, "OnLeave", CloseTooltips)
+        tooltip:SetCellScript(showDailies, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,adc,true})
+        tooltip:SetCellScript(showDailies, 1, "OnLeave", CloseTooltips)
       end
     end
-    if showw then
-      showw = tooltip:AddLine(YELLOWFONT .. L["Weekly Quests"] .. (awc > 0 and " ("..awc..")" or "") .. FONTEND)
+    if showWeeklies then
+      showWeeklies = tooltip:AddLine(YELLOWFONT .. L["Weekly Quests"] .. (awc > 0 and " ("..awc..")" or "") .. FONTEND)
       if awc > 0 then
-        tooltip:SetCellScript(showw, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,awc,false})
-        tooltip:SetCellScript(showw, 1, "OnLeave", CloseTooltips)
+        tooltip:SetCellScript(showWeeklies, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,awc,false})
+        tooltip:SetCellScript(showWeeklies, 1, "OnLeave", CloseTooltips)
       end
     end
     for toon, t in cpairs(SI.db.Toons, true) do
       local dc, wc = SI:QuestCount(toon)
       local col = columns[toon..1]
-      if showd and col and dc > 0 then
-        tooltip:SetCell(showd, col, ClassColorise(t.Class,dc),nil, "CENTER",maxcol)
-        tooltip:SetCellScript(showd, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dc,true})
-        tooltip:SetCellScript(showd, col, "OnLeave", CloseTooltips)
+      if showDailies and col and dc > 0 then
+        tooltip:SetCell(showDailies, col, ClassColorise(t.Class,dc),nil, "CENTER",maxcol)
+        tooltip:SetCellScript(showDailies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dc,true})
+        tooltip:SetCellScript(showDailies, col, "OnLeave", CloseTooltips)
       end
-      if showw and col and wc > 0 then
-        tooltip:SetCell(showw, col, ClassColorise(t.Class,wc),nil, "CENTER",maxcol)
-        tooltip:SetCellScript(showw, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,wc,false})
-        tooltip:SetCellScript(showw, col, "OnLeave", CloseTooltips)
+      if showWeeklies and col and wc > 0 then
+        tooltip:SetCell(showWeeklies, col, ClassColorise(t.Class,wc),nil, "CENTER",maxcol)
+        tooltip:SetCellScript(showWeeklies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,wc,false})
+        tooltip:SetCellScript(showWeeklies, col, "OnLeave", CloseTooltips)
       end
     end
   end

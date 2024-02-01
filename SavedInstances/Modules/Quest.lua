@@ -188,7 +188,7 @@ function SI:ValidateAndGetSpecialQuests()
     -- if no name but ahcievement id only, try to get name
     elseif not qinfo.name and qinfo.aid then
       SI.ScanTooltip:SetOwner(_G.UIParent, 'ANCHOR_NONE')
-      if not (SI.isClassicEra or SI.isWrath) then
+      if SI.isRetail then
         -- following member function is not in the wotlk/era client
         SI.ScanTooltip:SetAchievementByID(qinfo.aid)
       end

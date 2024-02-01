@@ -3,4 +3,4 @@ SavedInstances/Libs/*
 .env
 .DS_Store
 .vscode/*
-.code-workspace
+*.code-workspace
