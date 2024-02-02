@@ -190,7 +190,6 @@ function SI:QuestInfo(questID)
   SI.ScanTooltip:Show()
   local tooltipTitle = _G[SI.ScanTooltip:GetName().."TextLeft1"] ---@type FontString
   questName = tooltipTitle and tooltipTitle:GetText() or ""
-  SI:Debug(questName)
 
   -- only return the quest link if it produces a propper tooltip that contains the quest name in it.
   if #questName == 0 then return nil end -- cache miss
@@ -255,11 +254,11 @@ end
 
 ---@class SavedInstances.Toon.Currency
 ---@field amount number
----@field earnedThisWeek number
----@field weeklyMax number
----@field totalMax number
----@field totalEarned number
----@field relatedItemCount number
+---@field earnedThisWeek number?
+---@field weeklyMax number?
+---@field totalMax number?
+---@field totalEarned number?
+---@field relatedItemCount number?
 
 ---@class SavedInstances.Toon.Quest
 ---@field Title string
@@ -1201,7 +1200,7 @@ function SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
   
   if lockoutInfo and lockoutInfo.numEncounters and lockoutInfo.numCompleted then
     ---@diagnostic disable-next-line: undefined-field
-    return lockoutInfo.numEncounters, lockoutInfo.numCompleted, 1, lockoutInfo.remap, lockoutInfo.origin
+    return lockoutInfo.numCompleted, lockoutInfo.numEncounters, 1, lockoutInfo.remap, lockoutInfo.origin
   end
 
   local killed, total, base = 0, 0, 1
@@ -1313,7 +1312,7 @@ function SI:OrderedCategories()
     firsttype = "D"
     lasttype = "R"
   end
-  SI:Debug("first %s | last %s | step %s", firstexpansion, lastexpansion, expansionstep)
+  -- SI:Debug("first %s | last %s | step %s", firstexpansion, lastexpansion, expansionstep)
   for i = firstexpansion, lastexpansion, expansionstep do
     table.insert(orderedlist, firsttype .. i)
     if SI.db.Tooltip.CategorySort == "EXPANSION" then
@@ -1400,7 +1399,7 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
       killed, total = _kills, _total
     else
       killed, total = SI:GetInstanceEncounterProgress(instanceKey,toon,diffID)
-      SI:Debug("Encounter progress for %s on %s. %i out of %i", instanceKey, toon, killed or -1, total or -1)
+      SI:Debug("Encounter progress for %s on %s. %i out of %i", instanceKey, toon, (killed or -1), (total or -1))
     end
     if killed == 0 and total == 0 then -- boss kill info missing
       killed = "*"
@@ -2079,7 +2078,7 @@ function SI:UpdateToonData()
 
   -- Calling:PostRefresh()
 
-  Currency:UpdateCurrency()
+  Currency:UpdatePlayerCurrencies()
 
   local zone = GetRealZoneText()
   if zone and #zone > 0 then
@@ -2296,6 +2295,7 @@ hoverTooltip.ShowToonTooltip = function (cell, arg, ...)
   indicatortip:AddLine(STAT_AVERAGE_ITEM_LEVEL,("%d "):format(t.IL or 0)..STAT_AVERAGE_ITEM_LEVEL_EQUIPPED:format(t.ILe or 0))
   indicatortip:AddLine(LFG_LIST_ITEM_LEVEL_INSTR_PVP_SHORT,("%d"):format(t.ILPvp or 0))
   if t.Covenant and t.Covenant > 0 then
+    assert(SI.isRetail, "Covenant data is only available in retail")
     local data = C_Covenants.GetCovenantData(t.Covenant)
     local name = data and data.name
     if name then
@@ -2978,64 +2978,100 @@ hoverTooltip.ShowSpellIDTooltip = function (cell, arg, ...)
   indicatortip:Show()
 end
 
+--- show the currency info for the given toon
 hoverTooltip.ShowCurrencyTooltip = function (cell, arg, ...)
-  local toon, idx, ci = unpack(arg)
-  if not toon or not idx or not ci then return end
-  local info = C_CurrencyInfo.GetBasicCurrencyInfo(idx)
-  local tex = " \124T" .. info.icon .. ":0\124t"
-  local indicatortip = Tooltip:AcquireIndicatorTip(2, "LEFT","RIGHT")
-  indicatortip:AddHeader(ClassColorise(SI.db.Toons[toon].Class, strsplit(' ', toon)), CurrencyColor(ci.amount or 0,ci.totalMax)..tex)
+  ---@type string, number, SavedInstances.Toon.Currency
+  local toon, currencyID, currencyInfo = unpack(arg)
+  if not (toon and currencyID and currencyInfo) then return end
+  local info;
 
+  if SI.isClassicEra then
+    local description = ""
+    local _, itemLink = GetItemInfo(currencyID)
+    GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")  
+    SI.ScanTooltip:SetHyperlink(itemLink)
+    -- skip the first line, it's the item name.
+    local numLines = SI.ScanTooltip:NumLines()
+    for i = 2, numLines do
+      local line = _G[SI.ScanTooltip:GetName() .. "TextLeft" .. i]
+      if line then
+        ---@type string?
+        local text = line:GetText()
+        if text then
+          -- find unique count if avail and cache it in the toonDB
+          if text:find(ITEM_UNIQUE) and not currencyInfo.totalMax then
+            -- ITEM_UNIQUE_MULTIPLE = Unique (%d)
+            -- need to escape the `(`, `)`, and `%` and create a capture group for 1+ digits
+            -- to collect the count
+            local uniqueCount = tonumber(text:match(ITEM_UNIQUE_MULTIPLE:gsub("%(%%d%)", "%%((%%d+)%%)"))) or 1
+            currencyInfo.totalMax = uniqueCount
+          end
+          description = description..text..(i ~= numLines and '\n' or "")
+        end
+      end
+    end
+    SI.ScanTooltip:Hide()
+    info = {
+      icon = GetItemIcon(currencyID),
+      description = description
+    }
+  else
+    info = C_CurrencyInfo.GetBasicCurrencyInfo(currencyID)
+  end
+  local tex = " \124T" .. info.icon .. ":0\124t"
+
+  local indicatortip = Tooltip:AcquireIndicatorTip(2, "LEFT","RIGHT")
+  indicatortip:AddHeader(ClassColorise(SI.db.Toons[toon].Class, strsplit(' ', toon)), CurrencyColor(currencyInfo.amount or 0, currencyInfo.totalMax)..tex)
   indicatortip:AddLine('')
   indicatortip:SetCell(indicatortip:GetLineCount(), 1, GOLDFONT .. info.description .. FONTEND, nil, 'LEFT', 2, nil, nil, nil, 220)
 
   local spacer = nil
-  if ci.weeklyMax and ci.weeklyMax > 0 then
+  if currencyInfo.weeklyMax and currencyInfo.weeklyMax > 0 then
     if not spacer then
       indicatortip:AddLine(" ")
       spacer = true
     end
-    indicatortip:AddLine(format(CURRENCY_WEEKLY_CAP, "", CurrencyColor(ci.earnedThisWeek or 0, ci.weeklyMax), SI:formatNumber(ci.weeklyMax)))
+    indicatortip:AddLine(format(CURRENCY_WEEKLY_CAP, "", CurrencyColor(currencyInfo.earnedThisWeek or 0, currencyInfo.weeklyMax), SI:formatNumber(currencyInfo.weeklyMax)))
   end
-  if ci.totalEarned and ci.totalEarned > 0 and ci.totalMax and ci.totalMax > 0 then
+  if currencyInfo.totalEarned and currencyInfo.totalEarned > 0 and currencyInfo.totalMax and currencyInfo.totalMax > 0 then
     if not spacer then
       indicatortip:AddLine(" ")
       spacer = true
     end
-    indicatortip:AddLine(format(CURRENCY_TOTAL, "", CurrencyColor(ci.amount or 0, ci.totalMax)))
+    indicatortip:AddLine(format(CURRENCY_TOTAL, "", CurrencyColor(currencyInfo.amount or 0, currencyInfo.totalMax)))
     -- currently, only season currency use totalEarned
-    indicatortip:AddLine(format(CURRENCY_SEASON_TOTAL_MAXIMUM, "", CurrencyColor(ci.totalEarned or 0, ci.totalMax), SI:formatNumber(ci.totalMax)))
-  elseif ci.totalMax and ci.totalMax > 0 then
+    indicatortip:AddLine(format(CURRENCY_SEASON_TOTAL_MAXIMUM, "", CurrencyColor(currencyInfo.totalEarned or 0, currencyInfo.totalMax), SI:formatNumber(currencyInfo.totalMax)))
+  elseif currencyInfo.totalMax and currencyInfo.totalMax > 0 then
     if not spacer then
       indicatortip:AddLine(" ")
       spacer = true
     end
-    indicatortip:AddLine(format(CURRENCY_TOTAL_CAP, "", CurrencyColor(ci.amount or 0, ci.totalMax), SI:formatNumber(ci.totalMax)))
+    indicatortip:AddLine(format(CURRENCY_TOTAL_CAP, "", CurrencyColor(currencyInfo.amount or 0, currencyInfo.totalMax), SI:formatNumber(currencyInfo.totalMax)))
   end
-  if ci.covenant then
+  if currencyInfo.covenant then
     if not spacer then
       indicatortip:AddLine(" ")
       spacer = true
     end
     for covenantID = 1, 4 do
-      if ci.covenant[covenantID] then
+      if currencyInfo.covenant[covenantID] then
         local data = C_Covenants.GetCovenantData(covenantID)
         local name = data and data.name or UNKNOWN
-        indicatortip:AddLine(name .. ": " .. CurrencyColor(ci.covenant[covenantID] or 0, ci.totalMax))
+        indicatortip:AddLine(name .. ": " .. CurrencyColor(currencyInfo.covenant[covenantID] or 0, currencyInfo.totalMax))
       end
     end
   end
-  if SI.specialCurrency[idx] and SI.specialCurrency[idx].relatedItem then
+  if SI.specialCurrency[currencyID] and SI.specialCurrency[currencyID].relatedItem.id then
     if not spacer then
       indicatortip:AddLine(" ")
       spacer = true
     end
-    local itemName = GetItemInfo(SI.specialCurrency[idx].relatedItem.id) or ""
-    if SI.specialCurrency[idx].relatedItem.holdingMax then
-      local holdingMax = SI.specialCurrency[idx].relatedItem.holdingMax
-      indicatortip:AddLine(itemName .. ": " .. CurrencyColor(ci.relatedItemCount or 0, holdingMax) .. "/" .. holdingMax)
+    local itemName = GetItemInfo(SI.specialCurrency[currencyID].relatedItem.id) or ""
+    if SI.specialCurrency[currencyID].relatedItem.holdingMax then
+      local holdingMax = SI.specialCurrency[currencyID].relatedItem.holdingMax
+      indicatortip:AddLine(itemName .. ": " .. CurrencyColor(currencyInfo.relatedItemCount or 0, holdingMax) .. "/" .. holdingMax)
     else
-      indicatortip:AddLine(itemName .. ": " .. (ci.relatedItemCount or 0))
+      indicatortip:AddLine(itemName .. ": " .. (currencyInfo.relatedItemCount or 0))
     end
   end
   indicatortip:Show()
@@ -3043,18 +3079,29 @@ end
 
 ---Show currency summary in the addon tooltip
 ---@param cell any
----@param arg number?
+---@param arg number? currencyID
 ---@param ... any
 hoverTooltip.ShowCurrencySummary = function (cell, arg, ...)
   local currencyID = arg
   if not currencyID then return end
-  local data = C_CurrencyInfo.GetCurrencyInfo(currencyID)
-  local name = Currency.OverrideName[currencyID] or data.name
-  local texture = " \124T"..(Currency.OverrideTexture[currencyID] or data.iconFileID)..":0\124t"
-  
+
+  SI:Debug("ShowCurrencySummary", currencyID)
+  local name, icon;
+  if SI.isClassicEra then
+    -- currencies are items 
+    icon = GetItemIcon(currencyID)
+    name = GetItemInfo(currencyID)
+  else
+    assert(SI.isRetail, "Using `C_CurrencyInfo` is not valid for classic")
+    local data = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    icon = Currency.OverrideTexture[currencyID] or data.iconFileID
+    name = Currency.OverrideName[currencyID] or data.name
+  end
+  icon = " \124T"..icon..":0\124t"
+
   ---@type boolean, string?
   local itemFlag, itemIcon = false, nil
-  if SI.specialCurrency[currencyID] and SI.specialCurrency[currencyID].relatedItem then
+  if SI.specialCurrency[currencyID] and SI.specialCurrency[currencyID].relatedItem.id then
     itemFlag = true
     itemIcon = select(10, GetItemInfo(SI.specialCurrency[currencyID].relatedItem.id))
     itemIcon = itemIcon and (" \124T" .. itemIcon .. ":0\124t") or ""
@@ -3071,10 +3118,10 @@ hoverTooltip.ShowCurrencySummary = function (cell, arg, ...)
     local currencyInfo = toonData.currency and toonData.currency[currencyID]
     if currencyInfo and currencyInfo.amount then
       totalMax = totalMax or currencyInfo.totalMax
-      local str2 = CurrencyColor(currencyInfo.amount or 0, totalMax) .. texture
+      local str2 = CurrencyColor(currencyInfo.amount or 0, totalMax) .. icon
       if itemFlag then
-        if SI.specialCurrency[currencyID].relatedItem.holdingMax then
-          str2 = str2 .. " + " .. CurrencyColor(currencyInfo.relatedItemCount or 0, SI.specialCurrency[currencyID].relatedItem.holdingMax) .. itemIcon
+        if SI.specialCurrency[currencyID].relatedItems.holdingMax then
+          str2 = str2 .. " + " .. CurrencyColor(currencyInfo.relatedItemCount or 0, SI.specialCurrency[currencyID].relatedItems.holdingMax) .. itemIcon
         else
           str2 = str2 .. " + " .. (currencyInfo.relatedItemCount or 0) .. itemIcon
         end
@@ -3086,7 +3133,7 @@ hoverTooltip.ShowCurrencySummary = function (cell, arg, ...)
       total = total + currencyInfo.amount
     end
   end
-  indicatorTip:SetCell(1,2,CurrencyColor(total,0)..texture)
+  indicatorTip:SetCell(1,2,CurrencyColor(total,0)..icon)
   --indicatortip:AddLine(TOTAL, CurrencyColor(total,tmax)..tex)
   --indicatortip:AddLine(" ")
   SI.currency_sort = SI.currency_sort or function(a,b)
@@ -3277,14 +3324,14 @@ end
     end
   end
 
-  for exeptionQuestID, exceptionQuestType in pairs(QuestExceptions) do -- upgrade QuestDB with new exceptions
+  for exceptionQuestID, exceptionQuestType in pairs(QuestExceptions) do -- upgrade QuestDB with new exceptions
     local dbValue = -1 -- default to a blank zone
-    for _, questDB in pairs(SI.db.QuestDB) do
-      dbValue = questDB[exeptionQuestID] or dbValue
-      questDB[exeptionQuestID] = nil
+    for _, questStore in pairs(SI.db.QuestDB) do
+      dbValue = questStore[exceptionQuestID] or dbValue
+      questStore[exceptionQuestID] = nil
     end
     if SI.db.QuestDB[exceptionQuestType] then
-      SI.db.QuestDB[exceptionQuestType][exeptionQuestID] = dbValue
+      SI.db.QuestDB[exceptionQuestType][exceptionQuestID] = dbValue
     end
   end
 
@@ -3329,14 +3376,14 @@ function SI:OnEnable()
   self:RegisterBucketEvent("LOOT_CLOSED", 1, function() SI:QuestRefresh(nil) end)
   self:RegisterBucketEvent("LFG_UPDATE_RANDOM_INFO", 1, function() SI:UpdateInstanceData(); SI:UpdateToonData() end)
   self:RegisterBucketEvent("RAID_INSTANCE_WELCOME", 1, RequestRaidInfo)
-  self:RegisterEvent("CHAT_MSG_SYSTEM", "CheckSystemMessage")
-  self:RegisterEvent("CHAT_MSG_CURRENCY", "CheckSystemMessage")
-  self:RegisterEvent("CHAT_MSG_LOOT", "CheckSystemMessage")
-  self:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN", "UpdateToonData")
-  self:RegisterEvent("PLAYER_UPDATE_RESTING", "UpdateToonData")
-  self:RegisterEvent("PVP_RATED_STATS_UPDATE", "UpdateToonData")
-  -- self:RegisterEvent("COVENANT_CHOSEN", "UpdateToonData")
-  -- self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", "UpdateToonData")
+  self:RegisterEvent("CHAT_MSG_SYSTEM", function(...) SI:CheckSystemMessage(...) end)
+  self:RegisterEvent("CHAT_MSG_CURRENCY", function(...) SI:CheckSystemMessage(...) end)
+  self:RegisterEvent("CHAT_MSG_LOOT", function(...) SI:CheckSystemMessage(...) end)
+  self:RegisterEvent("CHAT_MSG_COMBAT_XP_GAIN", function() SI:UpdateToonData() end)
+  self:RegisterEvent("PLAYER_UPDATE_RESTING", function() SI:UpdateToonData() end)
+  self:RegisterEvent("PVP_RATED_STATS_UPDATE", function() SI:UpdateToonData() end)
+  -- self:RegisterEvent("COVENANT_CHOSEN", function() SI:UpdateToonData() end)
+  -- self:RegisterEvent("MYTHIC_PLUS_NEW_WEEKLY_RECORD", function() SI:UpdateToonData() end)
   self:RegisterEvent("ZONE_CHANGED_NEW_AREA", RequestRatedInfo)
   self:RegisterEvent("PLAYER_ENTERING_WORLD", function()
     C_Timer.After(1, function()
@@ -3440,7 +3487,7 @@ function SI:RefreshLockInfo()
 end
 
 local currencyPattern = CURRENCY_GAINED:gsub(":.*$","")
-function SI:CheckSystemMessage(event, msg)
+function SI:CheckSystemMessage(_, msg)
   local isInInstance, instancyType = IsInInstance()
   -- note: currency is already updated in TooltipShow,
   -- here we just hook JP/VP currency messages to capture lockout changes
@@ -4090,7 +4137,7 @@ function SI:Refresh(recoverDailies)
       info.ID = -1*numEncounters
       
       for i=1, numEncounters do
-        local bossName, texture, isKilled = GetLFGDungeonEncounterInfo(lfrDungeonID, i)
+        local bossName, icon, isKilled = GetLFGDungeonEncounterInfo(lfrDungeonID, i)
         info[i] = isKilled
       end
     end
@@ -4440,7 +4487,7 @@ function SI:ShowTooltip(anchor)
   local lfrMap = combineLFR and localarr("lfrmap")
   local orderedCategories = SI:OrderedCategories()
   for _, category in ipairs(orderedCategories) do
-    SI:Debug("category %s",category)
+    -- SI:Debug("category %s",category)
     for _, instanceKey in ipairs(SI:OrderedInstances(category)) do
       local instanceEntry = SI.db.Instances[instanceKey]
       if instanceEntry.Show == "always" then
@@ -4479,9 +4526,10 @@ function SI:ShowTooltip(anchor)
               then
                 categoryshown[category] = true
 
-                SI:Debug("Lockouts Found: %s - %s | expiry: %s " ,
+                SI:Debug("Lockouts Found: %s - %s | expires in: %s " ,
                 toon, instanceEntry[toon][diffID].Link,
-                instanceEntry[toon][diffID].Expires )
+                SecondsToTime(instanceEntry[toon][diffID].Expires - time())
+              )
 
                 if lfrInstance then
                   lfrBox[lfrBoxID] = true
@@ -5283,12 +5331,12 @@ function SI:ShowTooltip(anchor)
   if SI.db.Tooltip.CurrencySortName then
     ckeys = SI.currencySorted
   end
-  for _, idx in ipairs(ckeys) do
-    if SI.db.Tooltip["Currency" .. idx] or showall then
+  for _, currencyID in ipairs(ckeys) do
+    if SI.db.Tooltip["Currency" .. currencyID] or showall then
       local show
       for toon, t in cpairs(SI.db.Toons, true) do
         -- ci.name, ci.amount, ci.earnedThisWeek, ci.weeklyMax, ci.totalMax, ci.relatedItemCount
-        local ci = t.currency and t.currency[idx]
+        local ci = t.currency and t.currency[currencyID]
         if ci then
           local gotThisWeek = ((ci.earnedThisWeek or 0) > 0 and (ci.weeklyMax or 0) > 0)
           local gotSome = ((ci.relatedItemCount or 0) > 0) or ((ci.amount or 0) > 0)
@@ -5296,10 +5344,16 @@ function SI:ShowTooltip(anchor)
             addColumns(columns, toon, tooltip)
           end
           if not show and (gotThisWeek or gotSome) and columns[toon .. 1] then
-            local data = C_CurrencyInfo.GetCurrencyInfo(idx)
-            local name = Currency.OverrideName[idx] or data.name
-            local tex = Currency.OverrideTexture[idx] or data.iconFileID
-            show = format(" \124T%s:0\124t%s", tex, name)
+            local name, icon;
+            if SI.isClassicEra then
+              icon = GetItemIcon(currencyID)
+              name = GetItemInfo(currencyID)
+            else
+              local data = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+              name = Currency.OverrideName[currencyID] or data.name
+              icon = Currency.OverrideTexture[currencyID] or data.iconFileID
+            end
+            show = format(" \124T%s:0\124t%s", icon, name)
           end
         end
       end
@@ -5311,52 +5365,52 @@ function SI:ShowTooltip(anchor)
         end
         currLine = tooltip:AddLine(YELLOWFONT .. show .. FONTEND)
         tooltip:SetLineScript(currLine, "OnMouseDown", OpenCurrency)
-        tooltip:SetCellScript(currLine, 1, "OnEnter", hoverTooltip.ShowCurrencySummary, idx)
+        tooltip:SetCellScript(currLine, 1, "OnEnter", hoverTooltip.ShowCurrencySummary, currencyID)
         tooltip:SetCellScript(currLine, 1, "OnLeave", CloseTooltips)
         tooltip:SetCellScript(currLine, 1, "OnMouseDown", OpenCurrency)
 
-        for toon, t in cpairs(SI.db.Toons, true) do
-          local ci = t.currency and t.currency[idx]
+        for toon, toonData in cpairs(SI.db.Toons, true) do
+          local toonCurrencyInfo = toonData.currency and toonData.currency[currencyID]
           local col = columns[toon..1]
-          if ci and col then
+          if toonCurrencyInfo and col then
             local earned, weeklymax, totalmax = "","",""
             if SI.db.Tooltip.CurrencyMax then
-              if (ci.weeklyMax or 0) > 0 then
-                weeklymax = "/"..SI:formatNumber(ci.weeklyMax)
+              if (toonCurrencyInfo.weeklyMax or 0) > 0 then
+                weeklymax = "/"..SI:formatNumber(toonCurrencyInfo.weeklyMax)
               end
-              if (ci.totalMax or 0) > 0 then
-                totalmax = "/"..SI:formatNumber(ci.totalMax)
+              if (toonCurrencyInfo.totalMax or 0) > 0 then
+                totalmax = "/"..SI:formatNumber(toonCurrencyInfo.totalMax)
               end
             end
             if SI.db.Tooltip.CurrencyEarned or showall then
-              earned = CurrencyColor(ci.amount,ci.totalMax)..totalmax
+              earned = CurrencyColor(toonCurrencyInfo.amount,toonCurrencyInfo.totalMax)..totalmax
             end
             local str
-            if (ci.amount or 0) > 0 or (ci.earnedThisWeek or 0) > 0 or (ci.totalEarned or 0) > 0 then
-              if (ci.weeklyMax or 0) > 0 then
-                str = earned.." ("..CurrencyColor(ci.earnedThisWeek,ci.weeklyMax)..weeklymax..")"
-              elseif (ci.amount or 0) > 0 or (ci.totalEarned or 0) > 0 then
-                str = CurrencyColor(ci.amount,ci.totalMax)..totalmax
+            if (toonCurrencyInfo.amount or 0) > 0 or (toonCurrencyInfo.earnedThisWeek or 0) > 0 or (toonCurrencyInfo.totalEarned or 0) > 0 then
+              if (toonCurrencyInfo.weeklyMax or 0) > 0 then
+                str = earned.." ("..CurrencyColor(toonCurrencyInfo.earnedThisWeek,toonCurrencyInfo.weeklyMax)..weeklymax..")"
+              elseif (toonCurrencyInfo.amount or 0) > 0 or (toonCurrencyInfo.totalEarned or 0) > 0 then
+                str = CurrencyColor(toonCurrencyInfo.amount,toonCurrencyInfo.totalMax)..totalmax
               end
-              if SI.specialCurrency[idx] and SI.specialCurrency[idx].relatedItem then
-                if SI.specialCurrency[idx].relatedItem.holdingMax then
-                  local holdingMax = SI.specialCurrency[idx].relatedItem.holdingMax
+              if SI.specialCurrency[currencyID] and SI.specialCurrency[currencyID].relatedItems then
+                if SI.specialCurrency[currencyID].relatedItems.holdingMax then
+                  local holdingMax = SI.specialCurrency[currencyID].relatedItems.holdingMax
                   if SI.db.Tooltip.CurrencyMax then
-                    str = str .. " (" .. CurrencyColor(ci.relatedItemCount or 0, holdingMax) .. "/" .. holdingMax .. ")"
+                    str = str .. " (" .. CurrencyColor(toonCurrencyInfo.relatedItemCount or 0, holdingMax) .. "/" .. holdingMax .. ")"
                   else
-                    str = str .. " (" .. CurrencyColor(ci.relatedItemCount or 0, holdingMax) .. ")"
+                    str = str .. " (" .. CurrencyColor(toonCurrencyInfo.relatedItemCount or 0, holdingMax) .. ")"
                   end
                 else
-                  str = str .. " (" .. (ci.relatedItemCount or 0) .. ")"
+                  str = str .. " (" .. (toonCurrencyInfo.relatedItemCount or 0) .. ")"
                 end
               end
             end
             if str then
               if not SI.db.Tooltip.CurrencyValueColor then
-                str = ClassColorise(t.Class,str)
+                str = ClassColorise(toonData.Class,str)
               end
               tooltip:SetCell(currLine, col, str, nil, "CENTER", maxcol)
-              tooltip:SetCellScript(currLine, col, "OnEnter", hoverTooltip.ShowCurrencyTooltip, {toon, idx, ci})
+              tooltip:SetCellScript(currLine, col, "OnEnter", hoverTooltip.ShowCurrencyTooltip, {toon, currencyID, toonCurrencyInfo})
               tooltip:SetCellScript(currLine, col, "OnLeave", CloseTooltips)
               tooltip:SetCellScript(currLine, col, "OnMouseDown", OpenCurrency)
             end

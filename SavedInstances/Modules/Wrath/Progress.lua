@@ -1198,9 +1198,8 @@ function Module:OnInitialize()
 end
 
 function Module:OnEnable()
-  self:RegisterEvent('PLAYER_ENTERING_WORLD', 'UpdateAll')
-  self:RegisterEvent('QUEST_LOG_UPDATE', 'UpdateAll')
-
+  self:RegisterEvent('PLAYER_ENTERING_WORLD', function() self:UpdateAll() end)
+  self:RegisterEvent('QUEST_LOG_UPDATE', function() self:UpdateAll() end)
   self:UpdateAll()
 end
 

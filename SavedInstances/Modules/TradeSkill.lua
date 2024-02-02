@@ -14,6 +14,7 @@ local C_TradeSkillUI_GetFilteredRecipeIDs
 local C_TradeSkillUI_GetRecipeCooldown
 local C_TradeSkillUI_IsTradeSkillGuild
 local C_TradeSkillUI_IsTradeSkillLinked
+local C_TradeSkillUI_GetRecipeInfo
 if C_TradeSkillUI then
   assert(not SI.isClassicEra, 
   "C_TradeSkillUI is now available in Classic! Open an issue on github to request support."
@@ -26,6 +27,7 @@ if C_TradeSkillUI then
   C_TradeSkillUI_GetRecipeCooldown = C_TradeSkillUI.GetRecipeCooldown
   C_TradeSkillUI_IsTradeSkillGuild = C_TradeSkillUI.IsTradeSkillGuild
   C_TradeSkillUI_IsTradeSkillLinked = C_TradeSkillUI.IsTradeSkillLinked
+  C_TradeSkillUI_GetRecipeInfo = C_TradeSkillUI.GetRecipeInfo
 else -- Wotlk/Era Compatibility
   C_TradeSkillUI_IsTradeSkillLinked = IsTradeSkillLinked
   C_TradeSkillUI_IsTradeSkillGuild = function() return false end
@@ -38,6 +40,7 @@ else -- Wotlk/Era Compatibility
   end
   C_TradeSkillUI_GetFilteredRecipeIDs = C_TradeSkillUI_GetAllRecipeIDs
   C_TradeSkillUI_GetRecipeCooldown = GetTradeSkillCooldown
+  C_TradeSkillUI_GetRecipeInfo = GetTradeSkillInfo
 end
 local GetItemCooldown = GetItemCooldown 
   or C_Container.GetItemCooldown -- former function not in the wotlk client
@@ -45,9 +48,11 @@ local GetItemInfo = GetItemInfo
 local GetSpellInfo = GetSpellInfo
 local GetSpellLink = GetSpellLink
 
-local tradeSpells = {
+local trackedTradeCrafts = {
   -- Alchemy
   -- Vanilla
+  [25146] = "xmute", -- Transmute: Elemental Fire
+  [17187] = "xmute", -- Transmute: Arcanite
   [11479] = "xmute", -- Transmute: Iron to Gold
   [11480] = "xmute", -- Transmute: Mithril to Truesilver
   [17559] = "xmute", -- Transmute: Air to Fire
@@ -153,6 +158,7 @@ local tradeSpells = {
   [370747] = "dragonflightexper", -- Advanced Phial Experimentation
 
   -- Enchanting
+  [18560] = true, -- Mooncloth
   [28027]  = "sphere", -- Prismatic Sphere (2-day shared, 5.2.0 verified)
   [28028]  = "sphere", -- Void Sphere (2-day shared, 5.2.0 verified)
   [116499] = true,     -- Sha Crystal
@@ -215,6 +221,7 @@ local tradeSpells = {
   [142976] = true,    -- Hardened Magnificent Hide
   [171391] = true,    -- Burnished Leather
   [176089] = true,    -- Secrets of Draenor
+  [19566] = "item", -- Salt Shaker
 
   -- Engineering
   [139176] = true, -- Stabilized Lightning Source
@@ -248,7 +255,12 @@ local tradeSpells = {
   [36941]  = "item", -- Ultrasafe Transporter: Toshley's Station
 }
 
-local itemCDs = { -- [spellID] = itemID
+---@type table<number, number> [spellID]: itemID
+local trackedItemCrafts = {
+  -- Vanilla
+  -- [13399] = 11020 , -- Evergreen Pouch (10m cd)
+  [19566] = 15846, -- Salt Shaker
+
   [54710]  = 40768,  -- MOLL-E
   [67826]  = 49040,  -- Jeeves
   [126459] = 87214,  -- Blingtron 4000
@@ -292,7 +304,10 @@ function Module:OnEnable()
 end
 
 function Module:ScanItemCDs()
-  for spellID, itemID in pairs(itemCDs) do
+  -- alternatively we could search bags for any item on cooldown and use GetItemSpell to find the spellID
+  -- then we could use the spellID to find the trackedTradeCrafts entry, some items dont have an associated profession tho.
+  -- might rework this logic in the future
+  for spellID, itemID in pairs(trackedItemCrafts) do
     local start, duration = GetItemCooldown(itemID)
     if start and duration and start > 0 then
       self:RecordSkill(spellID, SI:GetTimeToTime(start + duration))
@@ -302,8 +317,8 @@ end
 
 function Module:RecordSkill(spellID, expires)
   if not spellID then return end
-  local info = tradeSpells[spellID]
-  if not info then
+  local displayStr = trackedTradeCrafts[spellID]
+  if not displayStr then
     self.missingWarned = self.missingWarned or {}
     if expires and expires > 0 and not self.missingWarned[spellID] then
       self.missingWarned[spellID] = true
@@ -312,14 +327,15 @@ function Module:RecordSkill(spellID, expires)
     return
   end
 
-  local t = SI.db.Toons[SI.thisToon]
-  t.Skills = t.Skills or {}
+  local playerStore = SI.db.Toons[SI.thisToon]
+  playerStore.Skills = playerStore.Skills or {}
 
-  local index = spellID
+  ---@type string|number # used to index the Toon.Skills table
+  local skillID = spellID 
   local spellName = GetSpellInfo(spellID)
   local title = spellName
   local link = nil
-  if info == "item" then
+  if displayStr == "item" then
     if not expires then
       self:ScheduleTimer("ScanItemCDs", 2) -- theres a delay for the item to go on cd
       return
@@ -327,14 +343,14 @@ function Module:RecordSkill(spellID, expires)
       -- might be global cooldowns, #509
       return
     end
-    if itemCDs[spellID] then
+    if trackedItemCrafts[spellID] then
       -- use item name as some item spellnames are ambiguous or wrong
-      title, link = GetItemInfo(itemCDs[spellID])
+      title, link = GetItemInfo(trackedItemCrafts[spellID])
       title = title or spellName
     end
-  elseif type(info) == "string" then
-    index = info
-    title = categoryNames[info] or title
+  elseif type(displayStr) == "string" then
+    skillID = displayStr
+    title = categoryNames[displayStr] or title
   elseif expires ~= 0 then
     local slink = GetSpellLink(spellID)
     if slink and #slink > 0 then  -- tt scan for the full name with profession
@@ -354,22 +370,22 @@ function Module:RecordSkill(spellID, expires)
   end
 
   if expires == 0 then
-    if t.Skills[index] then -- a cd ended early
+    if playerStore.Skills[skillID] then -- a cd ended early
       SI:Debug("Clearing Trade skill cd: %s (%s)",spellName,spellID)
     end
-    t.Skills[index] = nil
+    playerStore.Skills[skillID] = nil
     return
   elseif not expires then
     expires = SI:GetNextDailySkillResetTime()
     if not expires then return end -- ticket 127
-    if type(info) == "number" then -- over a day, make a rough guess
-      expires = expires + (info - 1) * 24 * 60 * 60
+    if type(displayStr) == "number" then -- over a day, make a rough guess
+      expires = expires + (displayStr - 1) * 24 * 60 * 60
     end
   end
   expires = floor(expires)
 
-  local sinfo = t.Skills[index] or {}
-  t.Skills[index] = sinfo
+  local sinfo = playerStore.Skills[skillID] or {}
+  playerStore.Skills[skillID] = sinfo
   local change = expires - (sinfo.Expires or 0)
   if abs(change) > 180 then -- updating expiration guess (more than 3 min update lag)
     SI:Debug("Trade skill cd: "..(link or title).." ("..spellID..") "..
@@ -393,25 +409,32 @@ function Module:RescanTradeSkill(spellID)
   end
 end
 
+---@param isAll boolean?
 function Module:ScanTradeSkill(isAll)
   if C_TradeSkillUI_IsTradeSkillLinked() or C_TradeSkillUI_IsTradeSkillGuild() then return end
 
   local count = 0
   local data = isAll and C_TradeSkillUI_GetAllRecipeIDs() or C_TradeSkillUI_GetFilteredRecipeIDs()
-  for _, spellID in ipairs(data) do
-    local cooldown, isDayCooldown = C_TradeSkillUI_GetRecipeCooldown(spellID)
+  for _, recipieID in ipairs(data or {}) do
+    local cooldown, isDayCooldown = C_TradeSkillUI_GetRecipeCooldown(recipieID)
 
     if isDayCooldown == nil then
-      local msCooldown = GetSpellBaseCooldown(spellID)
+      local msCooldown = GetSpellBaseCooldown(recipieID)
       if msCooldown then
         local days = msCooldown / (1000 * 60 * 60 * 24)
         isDayCooldown = days >= 1
       end
     end
+    if cooldown  and cooldown > 0 then
+      SI:Debug(
+        "Skill CD found. %s cast %s. cooldown: %s",
+        C_TradeSkillUI_GetRecipeInfo(recipieID), recipieID, SecondsToTime(cooldown or 0)
+      )
+    end
     
     if (
       cooldown and isDayCooldown -- GetRecipeCooldown often returns WRONG answers for daily cds
-      and not tonumber(tradeSpells[spellID]) -- daily flag incorrectly set for some multi-day cds (Northrend Alchemy Research)
+      and not tonumber(trackedTradeCrafts[recipieID]) -- daily flag incorrectly set for some multi-day cds (Northrend Alchemy Research)
     ) then
       cooldown = SI:GetNextDailySkillResetTime()
     elseif cooldown then
@@ -419,11 +442,10 @@ function Module:ScanTradeSkill(isAll)
     else
       cooldown = 0 -- off cooldown or no cooldown
     end
-
-    self:RecordSkill(spellID, cooldown)
+    self:RecordSkill(recipieID, cooldown)
     if cooldown then
       self.cooldownFound = self.cooldownFound or {}
-      self.cooldownFound[spellID] = true
+      self.cooldownFound[recipieID] = true
       count = count + 1
     end
   end
@@ -436,7 +458,7 @@ function Module:TRADE_SKILL_LIST_UPDATE()
 end
 
 function Module:UNIT_SPELLCAST_SUCCEEDED(_, unit, _, spellID)
-  if unit ~= "player" or not tradeSpells[spellID] then return end
+  if unit ~= "player" or not trackedTradeCrafts[spellID] then return end
 
   SI:Debug("UNIT_SPELLCAST_SUCCEEDED: %s (%s)", GetSpellLink(spellID), spellID)
 

@@ -74,5 +74,8 @@
     "Zandalari",
     "Zul'Aman"
   ],
-  "enabled": true
+  "enabled": true,
+  "enableFiletypes": [
+    "lua"
+  ]
 }

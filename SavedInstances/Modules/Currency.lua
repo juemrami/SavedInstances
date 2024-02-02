@@ -1,6 +1,7 @@
 ---@class SavedInstances
 ---@field logout boolean
 local SI, L = unpack((select(2, ...)))
+
 ---@class CurrencyModule : AceModule , AceEvent-3.0, AceTimer-3.0, AceBucket-3.0
 local Module = SI:NewModule('Currency', 'AceEvent-3.0', 'AceTimer-3.0', 'AceBucket-3.0')
 
@@ -14,7 +15,7 @@ local C_QuestLog_IsQuestFlaggedCompleted = C_QuestLog.IsQuestFlaggedCompleted
 local GetItemCount = GetItemCount
 local GetMoney = GetMoney
 
-local currency = {
+local allCurrencies = {
   81, -- Epicurean Award
   515, -- Darkmoon Prize Ticket
   2588, -- Riders of Azeroth Badge
@@ -132,173 +133,8 @@ local currency = {
   2774, -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
   2657, -- Mysterious Fragment
 }
-SI.currency = currency
 
-local currencySorted = {}
-local validCurrencies = {}
-for _, currencyID in ipairs(currency) do
-  -- check for nil currencies 
-  if C_CurrencyInfo_GetCurrencyInfo(currencyID) then
-    table.insert(currencySorted, currencyID)
-    table.insert(validCurrencies, currencyID)
-  end
-end
-table.sort(currencySorted, function (c1, c2)
-  local c1_name = C_CurrencyInfo_GetCurrencyInfo(c1).name
-  local c2_name = C_CurrencyInfo_GetCurrencyInfo(c2).name
-  return c1_name < c2_name
-end)
-SI.currencySorted = currencySorted
-SI.validCurrencies = validCurrencies
-
-local hiddenCurrency = {
-}
-
-local specialCurrency = {
-  [1129] = { -- WoD - Seal of Tempered Fate
-    weeklyMax = 3,
-    earnByQuest = {
-      36058,  -- Seal of Dwarven Bunker
-      -- Seal of Ashran quests
-      36054,
-      37454,
-      37455,
-      36056,
-      37456,
-      37457,
-      36057,
-      37458,
-      37459,
-      36055,
-      37452,
-      37453,
-    },
-  },
-  [1273] = { -- LEG - Seal of Broken Fate
-    weeklyMax = 3,
-    earnByQuest = {
-      43895,
-      43896,
-      43897,
-      43892,
-      43893,
-      43894,
-      43510, -- Order Hall
-      47851, -- Mark of Honor x5
-      47864, -- Mark of Honor x10
-      47865, -- Mark of Honor x20
-    },
-  },
-  [1580] = { -- BfA - Seal of Wartorn Fate
-    weeklyMax = 2,
-    earnByQuest = {
-      52834, -- Gold
-      52838, -- Piles of Gold
-      52835, -- Marks of Honor
-      52839, -- Additional Marks of Honor
-      52837, -- War Resources
-      52840, -- Stashed War Resources
-    },
-  },
-  [1755] = { -- BfA - Coalescing Visions
-    relatedItem = {
-      id = 173363, -- Vessel of Horrific Visions
-    },
-  },
-}
-SI.specialCurrency = specialCurrency
-
-for _, tbl in pairs(specialCurrency) do
-  if tbl.earnByQuest then
-    for _, questID in ipairs(tbl.earnByQuest) do
-      SI.QuestExceptions[questID] = "Regular" -- not show in Weekly Quest
-    end
-  end
-end
-
-Module.OverrideName = {
-  [2409] = L["Loot Whelpling Crest Fragment"], -- Whelpling Crest Fragment Tracker [DNT]
-  [2410] = L["Loot Drake Crest Fragment"], -- Drake Crest Fragment Tracker [DNT]
-  [2411] = L["Loot Wyrm Crest Fragment"], -- Wyrm Crest Fragment Tracker [DNT]
-  [2412] = L["Loot Aspect Crest Fragment"], -- Aspect Crest Fragment Tracker [DNT]
-  [2413] = L["Loot Spark of Shadowflame"], -- 10.1 Professions - Personal Tracker - S2 Spark Drops (Hidden)
-  [2774] = L["Loot Spark of Dreams"], -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
-}
-
-Module.OverrideTexture = {
-  [2413] = 5088829, -- 10.1 Professions - Personal Tracker - S2 Spark Drops (Hidden)
-  [2774] = 5341573, -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
-}
-
-function Module:OnEnable()
-  self:RegisterEvent("PLAYER_MONEY", "UpdateCurrency")
-  self:RegisterBucketEvent("CURRENCY_DISPLAY_UPDATE", 0.25, "UpdateCurrency")
-  self:RegisterEvent("BAG_UPDATE", "UpdateCurrencyItem")
-end
-
-function Module:UpdateCurrency()
-  if SI.logout then return end -- currency is unreliable during logout
-
-  local playerStore = SI.db.Toons[SI.thisToon]
-  playerStore.Money = GetMoney()
-  playerStore.currency = playerStore.currency or {}
-
-  local covenantID = C_Covenants_GetActiveCovenantID and C_Covenants_GetActiveCovenantID()
-  for _,currencyID in ipairs(currency) do
-    local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
-    if not data or (not data.discovered and not hiddenCurrency[currencyID]) then
-      playerStore.currency[currencyID] = nil
-    else
-      local currencyInfo = playerStore.currency[currencyID] or {}
-      currencyInfo.amount = data.quantity
-      currencyInfo.totalMax = data.maxQuantity
-      currencyInfo.earnedThisWeek = data.quantityEarnedThisWeek
-      currencyInfo.weeklyMax = data.maxWeeklyQuantity
-      if data.useTotalEarnedForMaxQty then
-        currencyInfo.totalEarned = data.totalEarned
-      end
-      -- handle special currency
-      if specialCurrency[currencyID] then
-        local tbl = specialCurrency[currencyID]
-        if tbl.weeklyMax then currencyInfo.weeklyMax = tbl.weeklyMax end
-        if tbl.earnByQuest then
-          currencyInfo.earnedThisWeek = 0
-          for _, questID in ipairs(tbl.earnByQuest) do
-            if C_QuestLog_IsQuestFlaggedCompleted(questID) then
-              currencyInfo.earnedThisWeek = currencyInfo.earnedThisWeek + 1
-            end
-          end
-        end
-        if tbl.relatedItem then
-          currencyInfo.relatedItemCount = GetItemCount(tbl.relatedItem.id)
-        end
-      elseif covenantID and currencyID == 1822 then -- Renown
-        -- plus one to amount and totalMax
-        currencyInfo.amount = currencyInfo.amount + 1
-        currencyInfo.totalMax = currencyInfo.totalMax + 1
-        if covenantID > 0 then
-          currencyInfo.covenant = currencyInfo.covenant or {}
-          currencyInfo.covenant[covenantID] = currencyInfo.amount
-        end
-      elseif covenantID and (currencyID == 1810 or currencyID == 1813) then -- Redeemed Soul and Reservoir Anima
-        if covenantID > 0 then
-          currencyInfo.covenant = currencyInfo.covenant or {}
-          currencyInfo.covenant[covenantID] = currencyInfo.amount
-        end
-      elseif currencyID == 2774 then -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
-        local duration = SI:GetNextWeeklyResetTime() - 1699365600 -- 2023-11-07T14:00:00+00:00
-        currencyInfo.totalMax = floor(duration / 604800) -- 7 days
-      end
-      -- don't store useless info
-      if currencyInfo.weeklyMax == 0 then currencyInfo.weeklyMax = nil end
-      if currencyInfo.totalMax == 0 then currencyInfo.totalMax = nil end
-      if currencyInfo.earnedThisWeek == 0 then currencyInfo.earnedThisWeek = nil end
-      if currencyInfo.totalEarned == 0 then currencyInfo.totalEarned = nil end
-      playerStore.currency[currencyID] = currencyInfo
-    end
-  end
-end
---- There is no designated currency api in classic. all currencies are treated as items. 
+--- There is no designated currency api in classic. Any "currency" is just a bag item. 
 local classicCurrencies = {
   -- Holiday Currency
   19182, -- Darkmoon Faire Prize Ticket
@@ -325,7 +161,7 @@ local classicCurrencies = {
   19715, -- Gold Hakkari Bijou
 
   -- Battleground Rewards
-  19322, -- Warsong Mark of Honor
+  -- 19322, -- Warsong Mark of Honor (DEPRECATED) https://www.wowhead.com/classic/item=19322
   20558, -- Warsong Gulch Mark of Honor
   20559, -- Arathi Basin Mark of Honor
   20560, -- Alterac Valley Mark of Honor
@@ -379,18 +215,220 @@ local classicCurrencies = {
   17333, -- Aqual Quintessence
   22754, -- Eternal Quintessence
 }
+--Todo(classic): Scan tooltip for unique count and saved a copy of the tooltip for each currency to show on mouseover for the currency cell in the main addon frame
+
+SI.currency = allCurrencies
+
+local currencySorted = {}
+local validCurrencies = {}
+if SI.isClassicEra then
+  SI:Debug("Classic Era detected using classicCurrencies")
+  for _, currencyID in ipairs(classicCurrencies) do
+    -- table.insert(allCurrencies, currencyID)
+    table.insert(validCurrencies, currencyID)
+    table.insert(currencySorted, currencyID)
+  end
+else
+  for _, currencyID in ipairs(allCurrencies) do
+    -- check for nil currencies 
+    if C_CurrencyInfo_GetCurrencyInfo(currencyID) then
+      table.insert(currencySorted, currencyID)
+      table.insert(validCurrencies, currencyID)
+    end
+  end
+end
+table.sort(currencySorted, function (c1, c2)
+  if SI.isClassicEra then
+    local c1_name = GetItemInfo(c1) or tostring(c1)
+    local c2_name = GetItemInfo(c2) or tostring(c2)
+    return c1_name < c2_name
+  end
+  local c1_name = C_CurrencyInfo_GetCurrencyInfo(c1).name
+  local c2_name = C_CurrencyInfo_GetCurrencyInfo(c2).name
+  return c1_name < c2_name
+end)
+SI.currencySorted = currencySorted
+SI.validCurrencies = validCurrencies
+
+DevTools_Dump(SI.validCurrencies)
+local hiddenCurrency = {
+}
+
+-- [currencyID]: { weeklyMax, earnByQuest, relatedItem }
+---@type table<number, {weeklyMax: number?, earnByQuest: number[], relatedItem: {id: number, holdingMax: number?}}>
+local specialCurrencies = {
+  [1129] = { -- WoD - Seal of Tempered Fate
+    weeklyMax = 3,
+    earnByQuest = {
+      36058,  -- Seal of Dwarven Bunker
+      -- Seal of Ashran quests
+      36054,
+      37454,
+      37455,
+      36056,
+      37456,
+      37457,
+      36057,
+      37458,
+      37459,
+      36055,
+      37452,
+      37453,
+    },
+  },
+  [1273] = { -- LEG - Seal of Broken Fate
+    weeklyMax = 3,
+    earnByQuest = {
+      43895,
+      43896,
+      43897,
+      43892,
+      43893,
+      43894,
+      43510, -- Order Hall
+      47851, -- Mark of Honor x5
+      47864, -- Mark of Honor x10
+      47865, -- Mark of Honor x20
+    },
+  },
+  [1580] = { -- BfA - Seal of Wartorn Fate
+    weeklyMax = 2,
+    earnByQuest = {
+      52834, -- Gold
+      52838, -- Piles of Gold
+      52835, -- Marks of Honor
+      52839, -- Additional Marks of Honor
+      52837, -- War Resources
+      52840, -- Stashed War Resources
+    },
+  },
+  [1755] = { -- BfA - Coalescing Visions
+    relatedItem = {
+      id = 173363,
+      holdingMax = nil,
+    }, -- Vessel of Horrific Visions
+  },
+}
+SI.specialCurrency = specialCurrencies
+
+--- add any quests related to special currencies to the QuestExceptions table
+--- this is done so that they do not appear in the Weekly Quests tracker
+for _, tbl in pairs(specialCurrencies) do
+  if tbl.earnByQuest then
+    for _, questID in ipairs(tbl.earnByQuest) do
+      SI.QuestExceptions[questID] = "Regular" -- not show in Weekly Quest
+    end
+  end
+end
+
+Module.OverrideName = {
+  [2409] = L["Loot Whelpling Crest Fragment"], -- Whelpling Crest Fragment Tracker [DNT]
+  [2410] = L["Loot Drake Crest Fragment"], -- Drake Crest Fragment Tracker [DNT]
+  [2411] = L["Loot Wyrm Crest Fragment"], -- Wyrm Crest Fragment Tracker [DNT]
+  [2412] = L["Loot Aspect Crest Fragment"], -- Aspect Crest Fragment Tracker [DNT]
+  [2413] = L["Loot Spark of Shadowflame"], -- 10.1 Professions - Personal Tracker - S2 Spark Drops (Hidden)
+  [2774] = L["Loot Spark of Dreams"], -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
+}
+
+Module.OverrideTexture = {
+  [2413] = 5088829, -- 10.1 Professions - Personal Tracker - S2 Spark Drops (Hidden)
+  [2774] = 5341573, -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
+}
+
+function Module:OnEnable()
+  self:RegisterEvent("PLAYER_MONEY", function() Module:UpdatePlayerCurrencies() end)
+  self:RegisterBucketEvent("CURRENCY_DISPLAY_UPDATE", 0.25, function() Module:UpdatePlayerCurrencies() end)
+  self:RegisterEvent("BAG_UPDATE", function() Module:UpdateCurrencyItem() end)
+end
+
+function Module:UpdatePlayerCurrencies()
+  if SI.logout then return end -- currency is unreliable during logout
+
+  local playerStore = SI.db.Toons[SI.thisToon]
+  playerStore.Money = GetMoney()
+  playerStore.currency = playerStore.currency or {}
+
+  local covenantID = C_Covenants_GetActiveCovenantID and C_Covenants_GetActiveCovenantID()
+  for _,currencyID in ipairs(allCurrencies) do
+    local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
+    if not data or (not data.discovered and not hiddenCurrency[currencyID]) then
+      playerStore.currency[currencyID] = nil
+    else
+      local currencyInfo = playerStore.currency[currencyID] or {}
+      currencyInfo.amount = data.quantity
+      currencyInfo.totalMax = data.maxQuantity
+      currencyInfo.earnedThisWeek = data.quantityEarnedThisWeek
+      currencyInfo.weeklyMax = data.maxWeeklyQuantity
+      if data.useTotalEarnedForMaxQty then
+        currencyInfo.totalEarned = data.totalEarned
+      end
+      -- handle special currency
+      if specialCurrencies[currencyID] then
+        local tbl = specialCurrencies[currencyID]
+        if tbl.weeklyMax then currencyInfo.weeklyMax = tbl.weeklyMax end
+        if tbl.earnByQuest then
+          currencyInfo.earnedThisWeek = 0
+          for _, questID in ipairs(tbl.earnByQuest) do
+            if C_QuestLog_IsQuestFlaggedCompleted(questID) then
+              currencyInfo.earnedThisWeek = currencyInfo.earnedThisWeek + 1
+            end
+          end
+        end
+        if tbl.relatedItem then
+      currencyInfo.relatedItemCount = GetItemCount(tbl.relatedItem.id)
+     end
+      elseif covenantID and currencyID == 1822 then -- Renown
+        -- plus one to amount and totalMax
+        currencyInfo.amount = currencyInfo.amount + 1
+        currencyInfo.totalMax = currencyInfo.totalMax + 1
+        if covenantID > 0 then
+          ---@diagnostic disable-next-line: inject-field
+          currencyInfo.covenant = currencyInfo.covenant or {}
+          currencyInfo.covenant[covenantID] = currencyInfo.amount
+        end
+      elseif covenantID and (currencyID == 1810 or currencyID == 1813) then -- Redeemed Soul and Reservoir Anima
+        if covenantID > 0 then
+          ---@diagnostic disable-next-line: inject-field
+          currencyInfo.covenant = currencyInfo.covenant or {}
+          currencyInfo.covenant[covenantID] = currencyInfo.amount
+        end
+      elseif currencyID == 2774 then -- 10.2 Professions - Personal Tracker - S3 Spark Drops (Hidden)
+        local duration = SI:GetNextWeeklyResetTime() - 1699365600 -- 2023-11-07T14:00:00+00:00
+        currencyInfo.totalMax = floor(duration / 604800) -- 7 days
+      end
+      -- don't store useless info
+      if currencyInfo.weeklyMax == 0 then currencyInfo.weeklyMax = nil end
+      if currencyInfo.totalMax == 0 then currencyInfo.totalMax = nil end
+      if currencyInfo.earnedThisWeek == 0 then currencyInfo.earnedThisWeek = nil end
+      if currencyInfo.totalEarned == 0 then currencyInfo.totalEarned = nil end
+      playerStore.currency[currencyID] = currencyInfo
+    end
+  end
+
+  if SI.isClassicEra then 
+    for _, currencyItemID in ipairs(validCurrencies) do
+      ---@type SavedInstances.Toon.Currency
+      local currencyInfo = playerStore.currency[currencyItemID] or {}
+      currencyInfo.amount = GetItemCount(currencyItemID)
+      currencyInfo.relatedItemCount = GetItemCount(currencyItemID)
+      playerStore.currency[currencyItemID] = currencyInfo
+    end
+  end
+end
 
 function Module:UpdateCurrencyItem()
   if not SI.db.Toons[SI.thisToon].currency then return end
 
-  for currencyID, tbl in pairs(specialCurrency) do
+  for currencyID, tbl in pairs(specialCurrencies) do
     if tbl.relatedItem and SI.db.Toons[SI.thisToon].currency[currencyID] then
       SI.db.Toons[SI.thisToon].currency[currencyID].relatedItemCount = GetItemCount(tbl.relatedItem.id)
     end
   end
+
   if SI.isClassicEra then
     for _, currencyID in ipairs(classicCurrencies) do
       local currencyInfo = SI.db.Toons[SI.thisToon].currency[currencyID] or {}
+      currencyInfo.amount = GetItemCount(currencyID)
       currencyInfo.relatedItemCount = GetItemCount(currencyID)
       SI.db.Toons[SI.thisToon].currency[currencyID] = currencyInfo
     end

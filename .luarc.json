@@ -287,7 +287,9 @@
         "GRAY_FONT_COLOR",
         "PURE_GREEN_COLOR",
         "RED_FONT_COLOR",
-        "GameTooltip_SetBasicTooltip"
+        "GameTooltip_SetBasicTooltip",
+        "GetTradeSkillInfo",
+        "WorldFrame"
     ],
     "diagnostics.disable": [
         "lowercase-global",

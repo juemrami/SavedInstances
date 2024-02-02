@@ -268,7 +268,7 @@ function Config:BuildAceConfigOptions()
             get = function(info) return not SI.db.MinimapIcon.hide end,
             set = function(info, value)
               SI.db.MinimapIcon.hide = not value
-              SI.Libs.LDBI:Refresh("SavedInstances")
+              SI.Libs.LDBI:Refresh("SavedInstances", nil)
             end,
           },
           DisableMouseover = {
@@ -989,16 +989,26 @@ function Config:BuildAceConfigOptions()
   
   local headerOffset = savedOptions.args.Currency.args.CurrencyHeader.order
   for idx, currencyID in ipairs(SI.validCurrencies) do 
-    local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
-    local name = Currency.OverrideName[currencyID] or data.name
-    ---@type string | number
-    local tex = Currency.OverrideTexture[currencyID] or data.iconFileID
-    tex = "\124T"..tex..":0\124t "
-    savedOptions.args.Currency.args["Currency"..currencyID] = {
-      type = "toggle",
-      order = headerOffset+idx,
-      name = tex..name,
-    }
+    local name
+    local icon ---@type string|number?
+    if SI.isClassicEra then
+      icon = GetItemIcon(currencyID)
+      name = GetItemInfo(currencyID) or ("Item: "..currencyID)
+      SI:Debug("Currency: %s, %s", name or "nil", icon or 'nil')
+    else
+      local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
+      name = Currency.OverrideName[currencyID] or data.name
+      icon = Currency.OverrideTexture[currencyID] or data.iconFileID
+    end
+
+    if name and icon then
+      icon = "\124T"..icon..":0\124t "
+      savedOptions.args.Currency.args["Currency"..currencyID] = {
+        type = "toggle",
+        order = headerOffset+idx,
+        name = icon..name,
+      }
+    end
   end
   return savedOptions
 end
