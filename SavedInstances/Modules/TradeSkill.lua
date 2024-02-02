@@ -498,6 +498,7 @@ function Module:TryRecordTradeSkill(spellID, lastCast, cooldown)
       hyperlink = nil
     end
   end
+  SI.ScanTooltip:Hide()
   recordSkill(tooltipTitle, hyperlink, expiry)
   return true
 end
