@@ -21,6 +21,15 @@ SI.Libs.LDBI = SI.Libs.LDB and LibStub('LibDBIcon-1.0', true)
 
 ---@class SavedInstances.ScanTooltip : GameTooltip
 SI.ScanTooltip = CreateFrame('GameTooltip', 'SavedInstancesScanTooltip', nil, 'SharedTooltipTemplate')
+local setHyperlink = SI.ScanTooltip.SetHyperlink
+---@param link string
+function SI.ScanTooltip:SetHyperlink(link)
+    self:SetOwner(WorldFrame, 'ANCHOR_NONE')
+    -- self:ClearAllPoints()
+	-- self:SetPoint("BOTTOMLEFT", WorldFrame, "BOTTOMLEFT", 0, 0);
+    setHyperlink(self, link)
+    -- self:Show()
+end
 SI.ScanTooltip:SetOwner(WorldFrame, 'ANCHOR_NONE')
 
 

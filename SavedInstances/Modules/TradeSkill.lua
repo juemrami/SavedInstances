@@ -486,7 +486,7 @@ function Module:TryRecordTradeSkill(spellID, lastCast, cooldown)
   local spellLink = GetSpellLink(spellID)
   if spellLink and #spellLink > 0 and not SI.isClassicEra then 
     hyperlink = "\124cffffd000\124Henchant:" .. spellID .. "\124h[X]\124h\124r"
-    GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")
+    -- GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")
     SI.ScanTooltip:SetHyperlink(spellLink)
     SI.ScanTooltip:Show()
     local line = _G[SI.ScanTooltip:GetName() .. "TextLeft1"]

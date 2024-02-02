@@ -61,9 +61,7 @@ function Module:AcquireIndicatorTip(...)
       if SI.isRetail then
         return
       end
-      GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")  
       SI.ScanTooltip:SetHyperlink(questLink)
-
       local getLineProps = function(lineName) 
         local fontString = _G[SI.ScanTooltip:GetName()..lineName] ---@type FontString?
         if fontString then

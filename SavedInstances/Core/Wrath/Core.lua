@@ -185,7 +185,7 @@ function SI:QuestInfo(questID)
   end
   
   SI:Debug("Scanning questID: ".. questID.." | Link: "..getQuestLink())
-  SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
+  -- SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
   SI.ScanTooltip:SetHyperlink(getQuestLink())
   SI.ScanTooltip:Show()
   local tooltipTitle = _G[SI.ScanTooltip:GetName().."TextLeft1"] ---@type FontString
@@ -1149,6 +1149,7 @@ local localizedExceptions = (function()
         if line and #line > 0 then
           exceptions[dungeonID][idx] = line
         end
+        SI.ScanTooltip:Hide()
       end
       exceptions[dungeonID].total = #encounters
       return exceptions
@@ -2179,7 +2180,7 @@ local function SI_OnQuestComplete()
   --- bug: restedXP (and mayber other addons too) can call the `GetQuestReward` function
   --- we chould check to see if the quest frame was actually open with `GetQuestID() ~= 0`
   if GetQuestID() == 0 then return end
-  
+
   local toonData = SI and SI.db.Toons[SI.thisToon]
   if not toonData then return end
 
@@ -2993,7 +2994,7 @@ hoverTooltip.ShowCurrencyTooltip = function (cell, arg, ...)
   if SI.isClassicEra then
     local description = ""
     local _, itemLink = GetItemInfo(currencyID)
-    GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")  
+    -- GameTooltip_SetBasicTooltip(SI.ScanTooltip, " ")  
     SI.ScanTooltip:SetHyperlink(itemLink)
     -- skip the first line, it's the item name.
     local numLines = SI.ScanTooltip:NumLines()
