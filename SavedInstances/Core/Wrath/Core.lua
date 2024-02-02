@@ -1897,9 +1897,9 @@ function SI:UpdateToonData()
   end
 
   -- update the random dunegon cooldowns (queue cooldown and deserter debuff)
-  currentToonData.LFG1 = SI:GetTimeToTime(GetLFGRandomCooldownExpiration()) or currentToonData.LFG1
-  currentToonData.LFG2 = SI:GetTimeToTime(SI:GetPlayerAuraExpirationTime(71041)) or currentToonData.LFG2 -- GetLFGDeserterExpiration()
-  currentToonData.pvpdesert = SI:GetTimeToTime(SI:GetPlayerAuraExpirationTime(26013)) or currentToonData.pvpdesert
+  currentToonData.LFG1 = SI:GetTimestampAfter(GetLFGRandomCooldownExpiration()) or currentToonData.LFG1
+  currentToonData.LFG2 = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(71041)) or currentToonData.LFG2 -- GetLFGDeserterExpiration()
+  currentToonData.pvpdesert = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(26013)) or currentToonData.pvpdesert
   
   -- if toon has either derserter (pve or pvp) add it to the spelltip cache
   if currentToonData.LFG2 then SI:updateSpellTip(71041) end
@@ -1949,7 +1949,7 @@ function SI:UpdateToonData()
     end
   end
 
-  TradeSkill:ScanItemCDs()
+  TradeSkill:ScanPlayerItemCooldowns()
 
   -- On Daily Reset
   if nextDailyReset and nextDailyReset > currentTimestamp then
@@ -2173,8 +2173,13 @@ local QuestIsWeekly = QuestIsWeekly or function()
   end
 end
 
+
 --- Parses the recently turned-in quest and updates the `SI.db` accordingly with the quest .
 local function SI_OnQuestComplete()
+  --- bug: restedXP (and mayber other addons too) can call the `GetQuestReward` function
+  --- we chould check to see if the quest frame was actually open with `GetQuestID() ~= 0`
+  if GetQuestID() == 0 then return end
+  
   local toonData = SI and SI.db.Toons[SI.thisToon]
   if not toonData then return end
 

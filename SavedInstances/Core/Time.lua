@@ -18,11 +18,11 @@ do
   local gttOffset = time() - GetTime()
 
   --- Returns unix timestamp in seconds of the time after the passed `seconds` have elapsed.
-  ---@param seconds number? A number of seconds from now.
+  ---@param elapsed number? A number of seconds from now.
   ---@return number? timeToTime Unix timestamp in seconds of the future time minus the player's computer system uptime. nil if futureTime is nil.
-  function SI:GetTimeToTime(seconds)
-    if not seconds then return end
-    return gttOffset + seconds
+  function SI:GetTimestampAfter(elapsed)
+    if not elapsed then return end
+    return gttOffset + elapsed
   end
 end
 
