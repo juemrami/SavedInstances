@@ -27,7 +27,7 @@ SI.ScanTooltip = CreateFrame('GameTooltip', 'SavedInstancesScanTooltip', nil, to
 local setHyperlink = SI.ScanTooltip.SetHyperlink
 
 assert(setHyperlink, 'Failed to create ScanTooltip, missing `SetHyperlink` method on inherited tooltip')
----@param link string
+---@param link string?
 function SI.ScanTooltip:SetHyperlink(link)
     if not link then return end
     self:SetOwner(WorldFrame, 'ANCHOR_NONE')

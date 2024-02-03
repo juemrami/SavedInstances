@@ -57,10 +57,6 @@ function Module:AcquireIndicatorTip(...)
   indicatorTip = QTip:Acquire('SavedInstancesIndicatorTooltip', ...)
   indicatorTip.AddQuestDescription = indicatorTip.AddQuestDescription
     or function(questLink)
-      --- this is an experimental feature added using the classic clients. Might need debugging for retail
-      if SI.isRetail then
-        return
-      end
       SI.ScanTooltip:SetHyperlink(questLink)
       local getLineProps = function(lineName) 
         local fontString = _G[SI.ScanTooltip:GetName()..lineName] ---@type FontString?

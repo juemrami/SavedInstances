@@ -1002,7 +1002,8 @@ local function TooltipQuestStore(_, arg)
   end
   local questID = type(entry.questID) == "number" and entry.questID
   if questID then
-    local link = LinkUtil.FormatLink("quest", questID , questID, SI.db.Toons[toon].Level) --[[@as string]]
+    ---@type string
+    local link = LinkUtil.FormatLink("quest", questID , questID, SI.db.Toons[toon].Level) 
     SI:Debug("Generating tooltip using quest hyperlink: [%s]", link)
     link = link:gsub('|', '\124')
     tip.AddQuestDescription(link)
