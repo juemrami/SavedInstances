@@ -1,3 +1,4 @@
+---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
 
 local QTip = SI.Libs.QTip
@@ -1107,7 +1108,7 @@ function SI:UpdateInstanceData()
   -- SI.lfdid_to_name = lfdid_to_name
   -- SI.wbid_to_name = wbid_to_name
 
-  Config:BuildOptions() -- refresh config table
+  Config:BuildAceConfigOptions() -- refresh config table
 
   starttime = debugprofilestop()-starttime
   SI:Debug("UpdateInstanceData(): completed in %.3f ms : %d added, %d renames, %d merges, %d conflicts.",
@@ -1313,10 +1314,10 @@ function SI:UpdateToonData()
     end
     RequestTimePlayed()
   end
-  t.LFG1 = SI:GetTimeToTime(GetLFGRandomCooldownExpiration()) or t.LFG1
-  t.LFG2 = SI:GetTimeToTime(SI:GetPlayerAuraExpirationTime(71041)) or t.LFG2 -- GetLFGDeserterExpiration()
+  t.LFG1 = SI:GetTimestampAfter(GetLFGRandomCooldownExpiration()) or t.LFG1
+  t.LFG2 = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(71041)) or t.LFG2 -- GetLFGDeserterExpiration()
   if t.LFG2 then SI:updateSpellTip(71041) end
-  t.pvpdesert = SI:GetTimeToTime(SI:GetPlayerAuraExpirationTime(26013)) or t.pvpdesert
+  t.pvpdesert = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(26013)) or t.pvpdesert
   if t.pvpdesert then SI:updateSpellTip(26013) end
   for toon, ti in pairs(SI.db.Toons) do
     if ti.LFG1 and (ti.LFG1 < now) then ti.LFG1 = nil end
@@ -1460,7 +1461,7 @@ function SI:UpdateToonData()
     end
   end
   Calling:PostRefresh()
-  Currency:UpdateCurrency()
+  Currency:UpdateCurrencyItem()
   local zone = GetRealZoneText()
   if zone and #zone > 0 then
     t.Zone = zone
@@ -2585,7 +2586,7 @@ function SI:OnEnable()
   SI.resetDetect:SetScript("OnEvent", SI.HistoryEvent)
   C_ChatInfo.RegisterAddonMessagePrefix("SavedInstances")
   SI:HistoryEvent("PLAYER_ENTERING_WORLD") -- update after initial load
-  SI:specialQuests()
+  SI:ValidateAndGetSpecialQuests()
   SI:updateRealmMap()
 end
 
@@ -2938,7 +2939,7 @@ function SI:QuestRefresh(recoverdaily, nextreset, weeklyreset)
   weeklyreset = weeklyreset or SI:GetNextWeeklyResetTime()
   if not nextreset or not weeklyreset then return end
 
-  for _, qinfo in pairs(SI:specialQuests()) do
+  for _, qinfo in pairs(SI:ValidateAndGetSpecialQuests()) do
     local qid = qinfo.quest
     if C_QuestLog.IsQuestFlaggedCompleted(qid) then
       local q = tiq[qid] or {}

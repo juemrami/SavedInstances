@@ -19,11 +19,17 @@ SI.Libs.QTip = LibStub('LibQTip-1.0')
 SI.Libs.LDB = LibStub('LibDataBroker-1.1', true)
 SI.Libs.LDBI = SI.Libs.LDB and LibStub('LibDBIcon-1.0', true)
 
+-- In classic some popular addons add stuff into the "GameTooltipTemplate" which we might accidentally scan so we use "SharedTooltipTemplate".
+-- However, "SharedTooltipTemplate" doesn't have SetHyperlink method in retail
+local tooltipTemplate = SI.isRetail and 'GameTooltipTemplate' or 'SharedTooltipTemplate, GameTooltipTemplate'
 ---@class SavedInstances.ScanTooltip : GameTooltip
-SI.ScanTooltip = CreateFrame('GameTooltip', 'SavedInstancesScanTooltip', nil, 'SharedTooltipTemplate')
+SI.ScanTooltip = CreateFrame('GameTooltip', 'SavedInstancesScanTooltip', nil, tooltipTemplate)
 local setHyperlink = SI.ScanTooltip.SetHyperlink
+
+assert(setHyperlink, 'Failed to create ScanTooltip, missing `SetHyperlink` method on inherited tooltip')
 ---@param link string
 function SI.ScanTooltip:SetHyperlink(link)
+    if not link then return end
     self:SetOwner(WorldFrame, 'ANCHOR_NONE')
     -- self:ClearAllPoints()
 	-- self:SetPoint("BOTTOMLEFT", WorldFrame, "BOTTOMLEFT", 0, 0);

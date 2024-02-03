@@ -127,7 +127,7 @@ local function GetIndicatorOptions()
           type = "select",
           width = "half",
           name = EMBLEM_SYMBOL,
-          values = SI.IndicatorIconTextures
+          values = SI.IndicatorIconTextures or SI.Indicators -- (old name)
         },
         [category.."Text"] = {
           order = 2,

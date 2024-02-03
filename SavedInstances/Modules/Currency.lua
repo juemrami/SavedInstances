@@ -250,9 +250,10 @@ end)
 SI.currencySorted = currencySorted
 SI.validCurrencies = validCurrencies
 
-DevTools_Dump(SI.validCurrencies)
-local hiddenCurrency = {
-}
+local hiddenCurrency = {}
+
+---@type {[number]: {left:{ text: string, font: FontObject, color: {}}}[]}
+local currencyTooltipCache = {}
 
 -- [currencyID]: { weeklyMax, earnByQuest, relatedItem }
 ---@type table<number, {weeklyMax: number?, earnByQuest: number[], relatedItem: {id: number, holdingMax: number?}}>

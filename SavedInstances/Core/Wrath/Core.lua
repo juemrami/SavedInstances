@@ -1042,6 +1042,9 @@ function SI:CategorySize(category)
   return i
 end
 
+
+-- Note: Iterating with `GetSavedInstanceEncounter(instIdx, encIdx)`  return localized names
+
 ---@type table<number, integer[]|integer> maps lfgDungeonID to either; a list npcIDs for the encounters of the instance, or a number that is total num of encounters.
 local exceptionData = {
   -- workaround a Blizzard bug:
@@ -1132,58 +1135,54 @@ local exceptionData = {
   [1701] = 4, -- Siege of Boralus
 }
 
-local localizedExceptions = (function()
+---Cached localized boss names parsed from tooltip.
+--- [dugeonID]: {[encounterNum]: bossName, ["total"]: totalEncounters, isPartial: boolean(private for cache)}
+---@type {[integer]: {[integer]: string, total: integer, isPartial: boolean}}
+local cachedLocalizations = { }
+
+---@param dungeonID number
+---@return {total: integer, [integer]: string}?
+local getLocalizedExceptionData = function(dungeonID)
   --- parse execptions for localized bossnames via scraping a unit link tooltip. 
-  ---@type {[integer]: {[integer]: string, total: integer}}
-  local exceptions = {}
-  for dungeonID, encounters in pairs(exceptionData) do
-    exceptions[dungeonID] = {}
+  if not exceptionData[dungeonID] then return nil end
+  local cacheData = cachedLocalizations[dungeonID]
+  if not cacheData or cacheData.isPartial then -- not cached yet
+    SI:Debug("Scanning tooltip for Boss name info for dungeonID:%s")
+    cacheData = {}
+    local encounters = exceptionData[dungeonID]
     if type(encounters) == "table" then
       for idx, npcID in ipairs(encounters) do
         -- localize boss names
-        SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
         SI.ScanTooltip:SetHyperlink(("unit:Creature-0-0-0-0-%d-0000000000"):format(npcID))
         SI.ScanTooltip:Show()  
         local line = _G[SI.ScanTooltip:GetName().."TextLeft1"]
         line = line and line:GetText() ---@type string?
         if line and #line > 0 then
-          exceptions[dungeonID][idx] = line
+          cacheData[idx] = line
         end
         SI.ScanTooltip:Hide()
       end
-      exceptions[dungeonID].total = #encounters
-      return exceptions
+      if #cacheData ~= #encounters then
+        SI:Debug("Scraped boss names for %s are incomplete. Total: %s/%s", dungeonID, #cacheData, #encounters)
+        cacheData.isPartial = true
+      end
+      cacheData.total = #encounters
     else -- type == "number"
-      exceptions[dungeonID].total = encounters
-      return exceptions
-    end 
+      cacheData.total = encounters
+    end
+    assert(cacheData.total, "`total` encounters not found for "..dungeonID.." in `exceptionData`. Set a table of bossIDs or number")
+    cachedLocalizations[dungeonID] = cacheData
+    SI:Debug("Boss name info cached successfully for %s", dungeonID)
   end
-end)()
+  return cacheData
+end
 ---Returns string array of localized encounter boss names with `total` field.
----@param LFDID number
+---@param dungeonID number
 ---@return {total: integer, [integer]: string}? encounters
-function SI:instanceException(LFDID)
-  if not LFDID then return nil end
-  return localizedExceptions[LFDID]
-  -- local encounters = exceptionData[LFDID]
-  -- local total
-  -- if type(encounters) == "table" then 
-  --   total = #encounters
-  --   for idx, npcID in ipairs(encounters) do
-  --     -- localize boss names
-  --       SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
-  --       SI.ScanTooltip:SetHyperlink(("unit:Creature-0-0-0-0-%d:0000000000"):format(npcID))
-  --       SI.ScanTooltip:Show()  
-  --       local line = _G[SI.ScanTooltip:GetName().."TextLeft1"]
-  --       line = line and line:GetText()
-  --       if line and #line > 0 then
-  --         encounters[idx] = line
-  --       end
-  --     end
-  --   end
-  --   encounters.total = encounters.total or total
-  --   return encounters
-  end
+function SI:GetInstanceExceptionInfo(dungeonID)
+  if not dungeonID then return nil end
+  return getLocalizedExceptionData(dungeonID)
+end
 
 ---get the boss encounter progress for a given instance, toon, and difficulty
 ---@param instanceKey string
@@ -1212,7 +1211,7 @@ function SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
     return (isKilled and 1 or 0), 1, 1, nil
   end
   if not instance or not instance.lfgDungeonID then return 0,0,1 end
-  local exception = SI:instanceException(instance.lfgDungeonID)
+  local exception = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
   --- in classic era `GetLFGDungeonNumEncounters` returns 0. 
   total = (exception and exception.total) or GetLFGDungeonNumEncounters(instance.lfgDungeonID)
   local LFR = SI.LFRInstances[instance.lfgDungeonID]
@@ -2904,7 +2903,7 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
     end
     -- in classic there is no tooltip for the saved instances hyperlink (not sure if bug or intedned)
     if not isTooltipParsed then 
-      local hardCodedTranslations = SI:instanceException(instance.lfgDungeonID)
+      local hardCodedTranslations = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
       local encounterBitField = tonumber(link:match(":(%d+)\124h"))
       if hardCodedTranslations and encounterBitField then
         for i = 1, hardCodedTranslations.total do
