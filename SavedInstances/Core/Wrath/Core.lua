@@ -176,7 +176,7 @@ end
 ---@return string? name The quest name
 ---@return string? link `quest` type Hyperlink. 
 function SI:QuestInfo(questID)
-  if questID == 0 then return end
+  if (not questID) or (questID == 0) then return end
   local questName = C_QuestLog_GetTitleForQuestID(questID)
   if (not questName) or (questName == "") then return end
   local linkTemplate = "\124cffffff00\124Hquest:%s:90\124h[%s]\124h\124r"
@@ -188,11 +188,11 @@ function SI:QuestInfo(questID)
   -- SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
   SI.ScanTooltip:SetHyperlink(getQuestLink())
   SI.ScanTooltip:Show()
-  local tooltipTitle = _G[SI.ScanTooltip:GetName().."TextLeft1"] ---@type FontString
-  questName = tooltipTitle and tooltipTitle:GetText() or ""
+  local title = _G[SI.ScanTooltip:GetName().."TextLeft1"] ---@type FontString
+  questName = title and title:GetText() or ""
 
   -- only return the quest link if it produces a propper tooltip that contains the quest name in it.
-  if #questName == 0 then return nil end -- cache miss
+  if #questName == 0 then return nil end
   return questName, getQuestLink()
 end
 
@@ -200,13 +200,17 @@ end
 ---@param xpacName string
 ---@return string
 local function abbreviate(xpacName)
-  xpacName = xpacName:gsub("Burning Crusade", "BC")
-  xpacName = xpacName:gsub("Wrath of the Lich King", "WotLK")
-  xpacName = xpacName:gsub("Cataclysm", "Cata")
-  xpacName = xpacName:gsub("Mists of Pandaria", "MoP")
-  xpacName = xpacName:gsub("Warlords of Draenor", "WoD")
-  xpacName = xpacName:gsub("Battle for Azeroth", "BfA")
-  return xpacName
+  -- small amount of clauses doesnt justify a lookup
+  -- ... yet.
+  if xpacName == "The Burning Crusade" then return "BC"
+  elseif xpacName == "Wrath of the Lich King" then return "WotLK"
+  elseif xpacName == "Cataclysm" then return "Cata"
+  elseif xpacName == "Mists of Pandaria" then return "MoP"
+  elseif xpacName == "Warlords of Draenor" then return "WoD"
+  elseif xpacName == "Legion" then return "Legion"
+  elseif xpacName == "Battle for Azeroth" then return "BfA"
+  elseif xpacName == "Shadowlands" then return "SL" end;
+  return xpacName;
 end
 
 function SI:formatNumber(num, isMoney)
@@ -273,15 +277,19 @@ end
 ---@field Link string  SpellLink hyperlink.
 ---@field Expires number?
 
---- No SavedInstances.Toon.BonusRoll
---- No SavedInstances.Toon.MythicKey
+---------------------------------------------------
+--- Todo Types: 
+---------------------------------------------------
+--- SavedInstances.Toon.BonusRoll
+--- SavedInstances.Toon.MythicKey
 --- {ResetTime: number?, }
---- No SavedInstances.Toon.TimewornMythicKey
+--- SavedInstances.Toon.TimewornMythicKey
 --- {ResetTime: number?, }
---- No SavedInstances.Toon.MythicKeyBest
+--- SavedInstances.Toon.MythicKeyBest
 --- {ResetTime: number?, rewardWaiting: boolean?, [1-3]: any, lastCompletedIndex: number?, runHistory: table}
---- No SavedInstances.Toon.Emissary
---- No SavedInstances.Toon.Calling
+--- SavedInstances.Toon.Emissary
+--- SavedInstances.Toon.Calling
+--------------------------------------------------
 
 ---@class SavedInstances.Toon
 ---@field Class string Character's class "fileName" (used for indexing global tables)
@@ -689,12 +697,11 @@ SI.defaultDB = {
     ---@type "PARTY" | "GROUP" | "EXPORT"
     KeystoneReportTarget = "EXPORT",
   },
-  Instances = { 
-  }, 	
+  ---@see SavedInstances.DB.Instances
+  Instances = {}, 	
   MinimapIcon = { hide = false },
   Quests = {},
   QuestDB = {
-    -- -@alias QuestDBEntry  # contains hash of mapID's keyed by questID
     Daily = {},
     Weekly = {},
     Darkmoon = {},
@@ -749,12 +756,8 @@ function SI:SkinFrame(frame, name)
   -- default behavior (ticket 81)
   local IsAddOnLoaded = C_AddOns.IsAddOnLoaded or IsAddOnLoaded
   if IsAddOnLoaded("ElvUI") or IsAddOnLoaded("Tukui") then
-    if frame.StripTextures then
-      frame:StripTextures()
-    end
-    if frame.CreateBackdrop then
-      frame:CreateBackdrop("Transparent")
-    end
+    if frame.StripTextures then frame:StripTextures() end
+    if frame.CreateBackdrop then frame:CreateBackdrop("Transparent") end
     local closeButton = _G[name .. "CloseButton"] or frame.CloseButton
     if closeButton and closeButton.SetAlpha then
       if ElvUI then
@@ -793,17 +796,17 @@ local function ClassColorise(class, targetstring)
 end
 
 ---Gets the color for a currency. Uses differnet colors to indicate progress towards a cap if `max` is defined.
----@param amt number
+---@param current number?
 ---@param max number?
 ---@return string
-local function CurrencyColor(amt, max)
-  amt = amt or 0
-  local samt = SI:formatNumber(amt)
+local function CurrencyColor(current, max)
+  current = current or 0
+  local samt = SI:formatNumber(current)
   if max == nil or max == 0 then
     return samt
   end
   if SI.db.Tooltip.CurrencyValueColor then
-    local pct = amt / max
+    local pct = current / max
     local color = GREENFONT
     if pct >= 1 then
       color = REDFONT
@@ -843,11 +846,10 @@ end
 function SI:QuestCount(toonName)
   local useAccountData = not toonName
   
-  local trackedQuests = useAccountData and SI.db.Quests 
-    or (SI.db.Toons[toonName] and SI.db.Toons[toonName].Quests)
-    or {}
-
+  local trackedQuests = (useAccountData and SI.db.Quests)
+    or (SI.db.Toons[toonName] and SI.db.Toons[toonName].Quests);
   if not trackedQuests then return 0, 0 end
+  
   local counts = {
     daily = 0,
     weekly = 0,
@@ -857,8 +859,8 @@ function SI:QuestCount(toonName)
     if not SI:QuestIgnored(questID) then
       -- original author assumed that if quest was not a "daily" then it was "weekly"
       -- not sure if this holds. depends on the usage of the Toon.Quests and DB.Quests tables.
-      local questType = questInfo.isDaily and "daily" or "weekly"
-      counts[questType] = counts[questType] + 1
+      local cooldown = questInfo.isDaily and "daily" or "weekly"
+      counts[cooldown] = counts[cooldown] + 1
     end
   end
   return counts.daily, counts.weekly
@@ -882,8 +884,8 @@ end
 -- 1. Remove all punctuation from the string.
 -- 2. Replace all whitespace characters with a space.
 -- 3. Replace all occurrences of two spaces with a single space.
--- 4. Remove leading spaces.
--- 5. Remove trailing spaces.
+-- 4. trim leading spaces.
+-- 5. trim trailing spaces.
 -- 6. Convert the entire string to uppercase.
 ---@param str string
 ---@return string
@@ -955,20 +957,20 @@ function SI:FindInstance(name, isRaid)
       end
     end
   end
-  -- normalized substring match
-  for cachedInstanceKey, instanceInfo in pairs(SI.db.Instances) do
-    local cachedInstanceName  = SI:normalizeName(cachedInstanceKey)
-    if (cachedInstanceName:find(normalizedName, 1, true) 
-    or normalizedName:find(cachedInstanceName, 1, true)) 
+  -- normalized substring match for any instances in saved vars.
+  for instanceKey, instanceInfo in pairs(SI.db.Instances) do
+    local normalizedKey  = SI:normalizeName(instanceKey)
+    if (normalizedKey:find(normalizedName, 1, true) 
+    or normalizedName:find(normalizedKey, 1, true)) 
     and instanceInfo.Raid == isRaid then -- Tempest Keep: The Botanica
       -- SI:Debug("FindInstance("..name..") => "..truename)
-      return cachedInstanceKey, instanceInfo.lfgDungeonID
+      return instanceKey, instanceInfo.lfgDungeonID
     end
   end
   return nil
 end
 
---- Provide either id or name and raid status to get the instance's key and entry from `SI.db.Instances`.
+--- Provide either id or name and raid status to get the instance's key and entry for/from `SI.db.Instances`.
 ---@param dungeonID number? [LfgDungeonID](https://warcraft.wiki.gg/wiki/LfgDungeonID).
 ---@param instanceName string? localized instance name.
 ---@param isRaid boolean?
@@ -977,23 +979,25 @@ end
 function SI:LookupInstance(dungeonID, instanceName, isRaid)
   -- SI:Debug("LookupInstance("..(id or "nil")..","..(name or "nil")..","..(raid and "true" or "false")..")")
   ---@type string?
-  local normalizedName, entry = nil, {}
+  local instanceKey, entry = nil, {}
   if instanceName then
     --- Get any normalized name and the associated LFGDungeonID
-    normalizedName, dungeonID = SI:FindInstance(instanceName, isRaid)
+    instanceKey, dungeonID = SI:FindInstance(instanceName, isRaid)
   end
   if dungeonID then -- either found or passed
-    normalizedName = SI:UpsertInstanceByDungeonID(dungeonID)
+    -- its possible an Upsert was already performed in `FindInstance`]
+    -- this could just be extra work for no reason. 
+    instanceKey = SI:UpsertInstanceByDungeonID(dungeonID)
   end
-  if normalizedName then
-    entry = SI.db.Instances[normalizedName]
+  if instanceKey then
+    entry = SI.db.Instances[instanceKey]
   end
   if not entry then
-    SI:Debug("LookupInstance() failed to find instance: "
-      ..(instanceName or "")..":"..(dungeonID or 0).." : "..GetLocale()
+    SI:Debug("LookupInstance failed to find instance: %s:%d : %s",
+      instanceName or "", dungeonID or 0, GetLocale()
     )
     SI.warned = SI.warned or {}
-    if not SI.warned[instanceName] then
+    if instanceName and not SI.warned[instanceName]  then
       SI.warned[instanceName] = true
       local linkDungeonID
       for i = 1, GetNumSavedInstances() do
@@ -1007,16 +1011,17 @@ function SI:LookupInstance(dungeonID, instanceName, isRaid)
     end
     entry = {}
   end
-  SI.db.Instances[normalizedName] = entry
-  return normalizedName, entry
+  SI.db.Instances[instanceKey] = entry
+  return instanceKey, entry
 end
 
+---@param instance string?
 function SI:InstanceCategory(instance)
   if not instance then return nil end
-  instance = SI.db.Instances[instance]
-  if instance.Holiday then return "H" end
-  if instance.Random then return "N" end
-  return ((instance.Raid and "R") or ((not instance.Raid) and "D")) .. instance.Expansion
+  local entry = SI.db.Instances[instance]
+  if entry.Holiday then return "H" end
+  if entry.Random then return "N" end
+  return ((entry.Raid and "R") or ((not entry.Raid) and "D")) .. entry.Expansion
 end
 
 function SI:InstancesInCategory(targetcategory)
@@ -1041,9 +1046,6 @@ function SI:CategorySize(category)
   end
   return i
 end
-
-
--- Note: Iterating with `GetSavedInstanceEncounter(instIdx, encIdx)`  return localized names
 
 ---@type table<number, integer[]|integer> maps lfgDungeonID to either; a list npcIDs for the encounters of the instance, or a number that is total num of encounters.
 local exceptionData = {
@@ -1191,8 +1193,8 @@ end
 ---@return integer completed
 ---@return integer total
 ---@return integer base 
----@return table? remap
----@return table? origin
+---@return table? remap # used by LFR entries
+---@return table? origin # used by LFR entries
 function SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
   local instance = SI.db.Instances[instanceKey]
   local lockoutInfo = instance and instance[toon] and instance[toon][difficultyID]
@@ -1211,9 +1213,9 @@ function SI:GetInstanceEncounterProgress(instanceKey,toon,difficultyID)
     return (isKilled and 1 or 0), 1, 1, nil
   end
   if not instance or not instance.lfgDungeonID then return 0,0,1 end
-  local exception = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
+  local encounters = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
   --- in classic era `GetLFGDungeonNumEncounters` returns 0. 
-  total = (exception and exception.total) or GetLFGDungeonNumEncounters(instance.lfgDungeonID)
+  total = (encounters and encounters.total) or GetLFGDungeonNumEncounters(instance.lfgDungeonID)
   local LFR = SI.LFRInstances[instance.lfgDungeonID]
   if LFR then
     total = LFR.total or total
@@ -1312,7 +1314,6 @@ function SI:OrderedCategories()
     firsttype = "D"
     lasttype = "R"
   end
-  -- SI:Debug("first %s | last %s | step %s", firstexpansion, lastexpansion, expansionstep)
   for i = firstexpansion, lastexpansion, expansionstep do
     table.insert(orderedlist, firsttype .. i)
     if SI.db.Tooltip.CategorySort == "EXPANSION" then
@@ -1329,7 +1330,7 @@ function SI:OrderedCategories()
 end
 
 ---Retrun formatted string for a lockouts encounter progress. ie "10/12H" for heroic lockout with 10 of 12 encounters completed.
----@param instanceKey string key to `SI.db.Instances`
+---@param instanceKey string? key to `SI.db.Instances`
 ---@param diffID number [DifficultyID](https://wow.gamepedia.com/DifficultyID)
 ---@param toon string key to `SI.db.Toons`
 ---@param isExpired boolean? true if the lockout is expired.
@@ -1366,6 +1367,7 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
   local userIndicators = SI.db.Indicators
   local defaultIndicators = SI.defaultDB.Indicators
 
+  ---@type boolean?
   local classColor = userIndicators[category .. "ClassColor"] ~= nil 
                     and userIndicators[category .. "ClassColor"] 
                     or defaultIndicators[category .. "ClassColor"]
@@ -1399,7 +1401,7 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
       killed, total = _kills, _total
     else
       killed, total = SI:GetInstanceEncounterProgress(instanceKey,toon,diffID)
-      SI:Debug("Encounter progress for %s on %s. %i out of %i", instanceKey, toon, (killed or -1), (total or -1))
+      SI:Debug("Encounter progress for %s on %s: %i of %i", instanceKey, toon, (killed or -1), (total or -1))
     end
     if killed == 0 and total == 0 then -- boss kill info missing
       killed = "*"
@@ -1504,16 +1506,16 @@ function SI:UpdateInstanceData()
   local renames = 0
   local merges = 0
   local conflicts = 0
-  for currentInstanceKey, currentInstance in pairs(SI.db.Instances) do
+  for currentKey, currentInstance in pairs(SI.db.Instances) do
     local freshInstanceKey ---@type string?
     if currentInstance.WorldBoss then
       freshInstanceKey = worldBossInstanceKeys[currentInstance.WorldBoss]
     elseif currentInstance.lfgDungeonID then
       freshInstanceKey = dungeonInstanceKeys[currentInstance.lfgDungeonID]
     else
-      SI:Debug("Ignoring bogus entry in instance database: "..currentInstanceKey)
+      SI:Debug("Ignoring bogus entry in instance database: "..currentKey)
     end
-    local shouldUpdateInstance = currentInstanceKey ~= freshInstanceKey 
+    local shouldUpdateInstance = currentKey ~= freshInstanceKey 
     
     -- if stale entry, merge data and remove it
     if freshInstanceKey and shouldUpdateInstance then 
@@ -1521,29 +1523,29 @@ function SI:UpdateInstanceData()
       ---@cast freshInstanceKey string
 
       local freshInstance = SI.db.Instances[freshInstanceKey]
-      -- Rename these for clarity
-      local staleInstanceKey, staleInstance =currentInstanceKey, currentInstance 
-      if not freshInstance 
-        or (freshInstance == staleInstance) 
-      then
+      
+      -- Renaming these here for clarity
+      local staleInstanceKey, staleInstance = currentKey, currentInstance 
+      
+      if not freshInstance or (freshInstance == staleInstance) then
         SI:Debug("Merge error in UpdateInstanceData: "..freshInstanceKey)
       else
         --- attempt to merge any character data 
-        for staleEntryField, staleData in pairs(staleInstance) do
-          ---@cast staleEntryField string
-          local characterKey = staleEntryField:find(" - ") and staleEntryField
+        for entryField, staleData in pairs(staleInstance) do
+          ---@cast entryField string
+          local characterKey = entryField:find(" - ") and entryField
           -- If the field is a character key 
           if characterKey then -- ie "toonName - toonRealm"
             -- and character entry exists in fresh instance
             if freshInstance[characterKey] then
               -- then we have a merge conflict: Keep the fresh data
               SI:Debug("Merge conflict on "..
-                freshInstanceKey..":"..staleInstanceKey..":"..staleEntryField
+                freshInstanceKey..":"..staleInstanceKey..":"..entryField
               )
               conflicts = conflicts + 1
             else
               -- otherwise copy K:V pair from stale instance to fresh instance
-              freshInstance[staleEntryField] = staleData
+              freshInstance[entryField] = staleData
               merges = merges + 1
             end
           end
@@ -1558,18 +1560,18 @@ function SI:UpdateInstanceData()
       -- and if missing becuase its been added the instance blacklist
       if dungeonIdBlacklist[currentInstance.lfgDungeonID] then
         SI:Debug("Removing blacklisted entry in instance database: "
-          ..currentInstanceKey
+          ..currentKey
         )
         -- if it is nil the entry in the saved db
-        SI.db.Instances[currentInstanceKey] = nil
+        SI.db.Instances[currentKey] = nil
       else
         SI:Debug("Ignoring unmatched entry in instance database: "
-          ..currentInstanceKey
+          ..currentKey
         )
       end
     end
   end
-
+  -- should this be called in here? is there a better spot to be calling for an options rebuild.
   Config:BuildAceConfigOptions() -- refresh config table
 
   local elapsedTime = debugprofilestop() - profilingStart
@@ -1867,7 +1869,7 @@ function SI:UpdateToonData()
     end
   end
 
-  local currentToonData = SI.db.Toons[SI.thisToon]
+  local playerData = SI.db.Toons[SI.thisToon]
   
   
   -- The following should probably be done in a hookscript on `RequestTimePlayed()`
@@ -1875,8 +1877,8 @@ function SI:UpdateToonData()
   if SI.logout or SI.PlayedTime or SI.playedpending then
     if SI.PlayedTime then
       local additionalTime = currentTimestamp - SI.PlayedTime
-      currentToonData.PlayedTotal = currentToonData.PlayedTotal + additionalTime
-      currentToonData.PlayedLevel = currentToonData.PlayedLevel + additionalTime
+      playerData.PlayedTotal = playerData.PlayedTotal + additionalTime
+      playerData.PlayedLevel = playerData.PlayedLevel + additionalTime
       SI.PlayedTime = currentTimestamp
     end
   else
@@ -1897,13 +1899,13 @@ function SI:UpdateToonData()
   end
 
   -- update the random dunegon cooldowns (queue cooldown and deserter debuff)
-  currentToonData.LFG1 = SI:GetTimestampAfter(GetLFGRandomCooldownExpiration()) or currentToonData.LFG1
-  currentToonData.LFG2 = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(71041)) or currentToonData.LFG2 -- GetLFGDeserterExpiration()
-  currentToonData.pvpdesert = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(26013)) or currentToonData.pvpdesert
+  playerData.LFG1 = SI:GetTimestampAfter(GetLFGRandomCooldownExpiration()) or playerData.LFG1
+  playerData.LFG2 = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(71041)) or playerData.LFG2 -- GetLFGDeserterExpiration()
+  playerData.pvpdesert = SI:GetTimestampAfter(SI:GetPlayerAuraExpirationTime(26013)) or playerData.pvpdesert
   
   -- if toon has either derserter (pve or pvp) add it to the spelltip cache
-  if currentToonData.LFG2 then SI:updateSpellTip(71041) end
-  if currentToonData.pvpdesert then SI:updateSpellTip(26013) end
+  if playerData.LFG2 then SI:updateSpellTip(71041) end
+  if playerData.pvpdesert then SI:updateSpellTip(26013) end
   
   -- clean up stale timer states for ALL toons 
   for toon, toonData in pairs(SI.db.Toons) do
@@ -1920,32 +1922,32 @@ function SI:UpdateToonData()
   if maxItemLevel then -- API can fail during logout requiring nil check
     maxItemLevel = tonumber(maxItemLevel) -- not sure why author converts to number here
     if maxItemLevel > 0 then
-      currentToonData.IL, currentToonData.ILe = maxItemLevel, tonumber(equippedItemLevel)
+      playerData.IL, playerData.ILe = maxItemLevel, tonumber(equippedItemLevel)
     end
   end
   if pvpItemLevel and tonumber(pvpItemLevel) > 0 then
-    currentToonData.ILPvp = tonumber(pvpItemLevel)
+    playerData.ILPvp = tonumber(pvpItemLevel)
   end
   if not SI.isClassicEra then
     -- Not sure what reason for parsing, what should be a base 10 number, into a base 10 number is. 
     -- Keep it assuming its related to some bug. 
-    currentToonData.Arena2v2rating = GetPersonalRatedInfo(1) or currentToonData.Arena2v2rating
-    currentToonData.Arena3v3rating = GetPersonalRatedInfo(2) or currentToonData.Arena3v3rating
+    playerData.Arena2v2rating = GetPersonalRatedInfo(1) or playerData.Arena2v2rating
+    playerData.Arena3v3rating = GetPersonalRatedInfo(2) or playerData.Arena3v3rating
     if SI.isRetail then
-      currentToonData.RBGrating = GetPersonalRatedInfo(4) or currentToonData.RBGrating
+      playerData.RBGrating = GetPersonalRatedInfo(4) or playerData.RBGrating
     end
   end
-  currentToonData.SpecializationIDs = currentToonData.SpecializationIDs or {}
+  playerData.SpecializationIDs = playerData.SpecializationIDs or {}
   for i = 1, GetNumSpecializations() do
-    currentToonData.SpecializationIDs[i] = GetSpecializationInfo(i) or currentToonData.SpecializationIDs[i]
+    playerData.SpecializationIDs[i] = GetSpecializationInfo(i) or playerData.SpecializationIDs[i]
   end
 
   if SI.isRetail then
     -- Solo Shuffle rating is unique to each specialization
-    currentToonData.SoloShuffleRating = currentToonData.SoloShuffleRating or {}
+    playerData.SoloShuffleRating = playerData.SoloShuffleRating or {}
     local currentSpecID = GetSpecialization()
     if currentSpecID then
-      currentToonData.SoloShuffleRating[currentSpecID] = GetPersonalRatedInfo(7) or currentToonData.SoloShuffleRating[currentSpecID]
+      playerData.SoloShuffleRating[currentSpecID] = GetPersonalRatedInfo(7) or playerData.SoloShuffleRating[currentSpecID]
     end
   end
 
@@ -1967,11 +1969,11 @@ function SI:UpdateToonData()
     ---@todo type out `Calling`
     ---@diagnostic disable-next-line: undefined-field 
     if SI.isRetail and Calling then Calling:OnDailyReset() end
-    currentToonData.DailyResetTime = nextDailyReset
-    if not currentToonData.DailyResetTime or (currentToonData.DailyResetTime < time()) then -- AccountDaily reset
-      for id, quest in pairs(currentToonData.Quests) do
+    playerData.DailyResetTime = nextDailyReset
+    if not playerData.DailyResetTime or (playerData.DailyResetTime < time()) then -- AccountDaily reset
+      for id, quest in pairs(playerData.Quests) do
         if quest.isDaily then
-          currentToonData.Quests[id] = nil
+          playerData.Quests[id] = nil
         end
     end
 
@@ -2000,7 +2002,7 @@ function SI:UpdateToonData()
         end
       end
     end
-    currentToonData.DailyResetTime = nextDailyReset
+    playerData.DailyResetTime = nextDailyReset
     end
   end
 
@@ -2021,7 +2023,7 @@ function SI:UpdateToonData()
           -- or (toonData.WeeklyResetTime + 7*24*3600) *shouldnt fail*
       end
     end
-    currentToonData.WeeklyResetTime = nextWeeklyReset
+    playerData.WeeklyResetTime = nextWeeklyReset
   end
 
   -- Skill Resets
@@ -2070,47 +2072,47 @@ function SI:UpdateToonData()
     end
   end
   -- Quest resets for *current* toon
-  for id, quest in pairs(currentToonData.Quests) do -- AccountWeekly reset
+  for id, quest in pairs(playerData.Quests) do -- AccountWeekly reset
     if not quest.isDaily and (quest.Expires or 0) < currentTimestamp then
-      currentToonData.Quests[id] = nil
+      playerData.Quests[id] = nil
     end
   end
 
-  -- Calling:PostRefresh()
+  if Calling then Calling:PostRefresh() end
 
   Currency:UpdatePlayerCurrencies()
 
   local zone = GetRealZoneText()
   if zone and #zone > 0 then
-    currentToonData.Zone = zone
+    playerData.Zone = zone
   end
-  currentToonData.Level = UnitLevel("player")
+  playerData.Level = UnitLevel("player")
   local lrace, race = UnitRace("player")
   local faction, lfaction = UnitFactionGroup("player")
-  currentToonData.Faction = faction
-  currentToonData.oRace = race
+  playerData.Faction = faction
+  playerData.oRace = race
   if race == "Pandaren" then
-    currentToonData.Race = lrace.." ("..lfaction..")"
+    playerData.Race = lrace.." ("..lfaction..")"
   else
-    currentToonData.Race = lrace
+    playerData.Race = lrace
   end
 
   if not SI.logout then -- isLoggingOut?
-    currentToonData.isResting = IsResting()
-    currentToonData.MaxXP = UnitXPMax("player")
-    if currentToonData.Level < SI.maxLevel then
-      currentToonData.XP = UnitXP("player")
-      currentToonData.RestXP = GetXPExhaustion()
+    playerData.isResting = IsResting()
+    playerData.MaxXP = UnitXPMax("player")
+    if playerData.Level < SI.maxLevel then
+      playerData.XP = UnitXP("player")
+      playerData.RestXP = GetXPExhaustion()
     else
-      currentToonData.XP = nil
-      currentToonData.RestXP = nil
+      playerData.XP = nil
+      playerData.RestXP = nil
     end
-    currentToonData.Warmode = SI.isRetail and C_PvP.IsWarModeDesired() or nil
-    currentToonData.Covenant = SI.isRetail and C_Covenants.GetActiveCovenantID() or nil
-    currentToonData.MythicPlusScore = SI.isRetail and C_ChallengeMode.GetOverallDungeonScore() or nil
+    playerData.Warmode = SI.isRetail and C_PvP.IsWarModeDesired() or nil
+    playerData.Covenant = SI.isRetail and C_Covenants.GetActiveCovenantID() or nil
+    playerData.MythicPlusScore = SI.isRetail and C_ChallengeMode.GetOverallDungeonScore() or nil
   end
 
-  currentToonData.LastSeen = currentTimestamp
+  playerData.LastSeen = currentTimestamp
 end
 
 function SI:QuestIsDarkmoonMonthly()
@@ -2885,7 +2887,8 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
       end
     end
     SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
-    --bugfix: `instanceinfo` link type not avail in either classic or wotlk
+   
+    -- in classic/wotlk there is no tooltip for the saved instances hyperlink (not sure if bug or intedned)
     if SI.isRetail then SI.ScanTooltip:SetHyperlink(link) end
     SI.ScanTooltip:Show()
     local name = SI.ScanTooltip:GetName()
@@ -2901,20 +2904,19 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
         indicatorTip:SetCell(indicatorTip:AddLine(),1,coloredText(left),nil,"CENTER",3)
       end
     end
-    -- in classic there is no tooltip for the saved instances hyperlink (not sure if bug or intedned)
     if not isTooltipParsed then 
-      local hardCodedTranslations = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
-      local encounterBitField = tonumber(link:match(":(%d+)\124h"))
-      if hardCodedTranslations and encounterBitField then
-        for i = 1, hardCodedTranslations.total do
+      local localizedEncounters = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
+      local encounterBitmap = tonumber(link:match(":(%d+)\124h"))
+      if localizedEncounters and encounterBitmap then
+        for i = 1, localizedEncounters.total do
           local newLine = indicatorTip:AddLine()
-          indicatorTip:SetCell(newLine, 1, hardCodedTranslations[i], nil, "LEFT", 2)
+          indicatorTip:SetCell(newLine, 1, localizedEncounters[i], nil, "LEFT", 2)
           local text = "\124cff00ff00"..BOSS_ALIVE.."\124r"
-          if bit.band(encounterBitField,1) > 0 then
+          if bit.band(encounterBitmap,1) > 0 then
             text = "\124cffff1f1f"..BOSS_DEAD.."\124r"
           end
           indicatorTip:SetCell(newLine, 3, text,nil, "RIGHT", 1)
-          encounterBitField = bit.rshift(encounterBitField,1)
+          encounterBitmap = bit.rshift(encounterBitmap,1)
         end
       else -- no hardcoded list of encounters in the exceptions table (this should be the default)
         if lockoutInfo.encounters then
@@ -3011,7 +3013,8 @@ hoverTooltip.ShowCurrencyTooltip = function (cell, arg, ...)
             local uniqueCount = tonumber(text:match(ITEM_UNIQUE_MULTIPLE:gsub("%(%%d%)", "%%((%%d+)%%)"))) or 1
             currencyInfo.totalMax = uniqueCount
           end
-          description = description..text..(i ~= numLines and '\n' or "")
+          -- temporary. should ideally clone the lines in the indicator tip instead of newline seperating it and putting it all in a single line.
+          description = (i == 1 and "" or '\n')..description..text
         end
       end
     end
@@ -3090,7 +3093,7 @@ hoverTooltip.ShowCurrencySummary = function (cell, arg, ...)
   local currencyID = arg
   if not currencyID then return end
 
-  SI:Debug("ShowCurrencySummary", currencyID)
+  -- SI:Debug("ShowCurrencySummary", currencyID)
   local name, icon;
   if SI.isClassicEra then
     -- currencies are items 
@@ -3222,7 +3225,7 @@ function SI:toonInit()
     toonData = SI.db.Toons[SI.thisToon]
   end
 
-  -- I feel like old keys should be removed in a more programmatic way in the DB version compatability section. of `SI:OnInitialize`
+  -- I feel like old keys should be removed in a more programmatic way in the DB migrations of `SI:OnInitialize`
   
   -- toonData.DailyWorldQuest = nil -- REMOVED
   -- toonData.Artifact = nil -- REMOVED
@@ -3500,7 +3503,7 @@ function SI:CheckSystemMessage(_, msg)
   -- dont update on bg honor
     and (instancyType == "party" or instancyType == "raid") 
     and (msg:find(INSTANCE_SAVED) -- first boss kill
-      or msg:find(currencyPattern)) -- subsequent boss kills (unless capped or over level)
+    or msg:find(currencyPattern)) -- subsequent boss kills (unless capped or over level)
   then
     SI:RefreshLockInfo()
   end
@@ -4467,7 +4470,9 @@ function SI:ShowTooltip(anchor)
   local headLine = tooltip:AddHeader(headText)
   tooltip:SetCellScript(headLine, 1, "OnEnter", hoverTooltip.ShowAccountSummary )
   tooltip:SetCellScript(headLine, 1, "OnLeave", CloseTooltips)
-  -- tooltip:SetCellScript(headLine, 1, "OnMouseDown", OpenWeeklyRewards) NOT_IN_WRATH
+  if SI.isRetail then 
+    tooltip:SetCellScript(headLine, 1, "OnMouseDown", OpenWeeklyRewards) 
+  end
   SI:UpdateToonData()
   local columns = localarr("columns")
   for toon,_ in cpairs(columnCache[showall]) do
@@ -4639,7 +4644,7 @@ function SI:ShowTooltip(anchor)
           if showcol[diffID] then
             local col = columns[toon..base]
             tooltip:SetCell(row, col,
-              DifficultyString(instance, diffID, toon, inst[toon][diffID].Expires == 0),nil,nil, span)
+              DifficultyString(instance, diffID, toon, inst[toon][diffID].Expires == 0), span)
             tooltip:SetCellScript(row, col, "OnEnter", hoverTooltip.ShowIndicatorTooltip, {instance, toon, diffID})
             tooltip:SetCellScript(row, col, "OnLeave", CloseTooltips)
             if SI.LFRInstances[inst.lfgDungeonID] then
