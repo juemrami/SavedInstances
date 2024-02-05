@@ -31,7 +31,7 @@ Core\Debug.lua
 
 Modules\Quest.lua
 Modules\Currency.lua
-Modules\Wrath\Progress.lua
+Modules\Progress.lua
 Modules\TradeSkill.lua
 # Modules\BonusRoll.lua
 # Modules\Calling.lua

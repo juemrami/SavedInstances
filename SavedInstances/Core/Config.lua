@@ -10,7 +10,7 @@ local Progress = SI:GetModule('Progress')
 local Warfront = SI.isRetail and SI:GetModule('Warfront') or nil
 ---@cast Tooltip TooltipModule
 ---@cast Currency CurrencyModule
----@cast Progress ProgressModule.Wrath
+---@cast Progress ProgressModule
 
 -- Lua functions
 local pairs, ipairs, tonumber, tostring, wipe, unpack, date, tinsert, sort
@@ -127,7 +127,7 @@ local function GetIndicatorOptions()
           type = "select",
           width = "half",
           name = EMBLEM_SYMBOL,
-          values = SI.IndicatorIconTextures or SI.Indicators -- (old name)
+          values = SI.IndicatorIconTextures
         },
         [category.."Text"] = {
           order = 2,
@@ -141,20 +141,18 @@ local function GetIndicatorOptions()
           width = "half",
           hasAlpha = false,
           name = COLOR,
-          disabled = function()
-            -- return false
-            return not not SI.db.Indicators[category .. "ClassColor"]
-          end,
+          disabled = function() return SI.db.Indicators[category .. "ClassColor"] end,
           get = function(info)
-            color = SI.db.Indicators[info[#info]]  or SI.defaultDB.Indicators[info[#info]]
+            local color = SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
             local r = color[1]
             local g = color[2]
             local b = color[3]
-            --- will be using color mixin going forward. `nil` check required for backwards compatibility.
-            if color.GetRGB or color.GetRGBA then
-              r, g, b, a = (color.GetRGBA or color.GetRGB)(color)
-              SI:Debug("Color picker returned a colorMixin | r: %s, g: %s, b: %s, a: %s", r, g, b, a)
+            --- id be using color mixin going forward. `nil` check required for backwards compatibility.
+            if color.GetRGBA then
+              ---@cast color ColorMixin
+              r, g, b, a = color:GetRGBA()
             end
+            -- SI:Debug("Color picker GET | r: %s, g: %s, b: %s, a: %s", r or "nil", g or "nil", b or "nil", a or "nil")
             return r, g, b, nil
           end,
           set = function(info, r, g, b, ...)
@@ -162,28 +160,18 @@ local function GetIndicatorOptions()
             local color = CreateColor(r, g, b, 1)
             SI.db.Indicators[info[#info]] = color
 
-            --- for backwards comptaibility. this should be depracated in the future in favor of using a colormixin.
+            --- inster to 1,2,3 for backwards comptaibility. 
+            --- imo should be deperecated in the future in favor of using a colormixin.
             SI.db.Indicators[info[#info]][1] = r
             SI.db.Indicators[info[#info]][2] = g
             SI.db.Indicators[info[#info]][3] = b
-            SI:Debug("Color picker set with colorMixin | r: %s, g: %s, b: %s", r, g, b)
+            -- SI:Debug("Color picker SET with colorMixin | r: %s, g: %s, b: %s", r, g, b)
           end,
         },
-        [category.."ClassColor1"] = {
+        [category.."ClassColor"] = {
           order = 4,
           type = "toggle",
           name = L["Use class color"],
-          -- set = function(info, value)
-          --   SI.db.Indicators[info[#info]] = value
-          -- end,
-          -- get = function(info)
-          --   return SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
-          -- end,
-        },
-        [category.."TEST"] = {
-          order = 6,
-          type = "toggle",
-          name = "this is a test",
         },
       },
     }
@@ -655,13 +643,12 @@ function Config:BuildAceConfigOptions()
         order = 4,
         type = "group",
         name = L["Indicators"],
-        get = function(info)
-          -- if SI.db.Indicators[info[#info]] ~= nil then -- tri-state boolean logic
-          --   return SI.db.Indicators[info[#info]]
-          -- else
-          --   return SI.defaultDB.Indicators[info[#info]]
-          -- end
-          return SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
+        get = function(info) -- base getter. Inherited by any sub-options that don't have their own getter.
+          if SI.db.Indicators[info[#info]] ~= nil then -- tri-state boolean logic
+            return SI.db.Indicators[info[#info]]
+          else
+            return SI.defaultDB.Indicators[info[#info]]
+          end
         end,
         set = function(info, value)
           SI:Debug("Config set: "..info[#info].." = "..(value and "true" or "false"))
@@ -968,7 +955,7 @@ function Config:BuildAceConfigOptions()
   }
   -- Insert built options into the "cache"
   -- (im not sure what the point of this is, it was in the original code but i see no purpose for it)
-  for k,v in pairs(options) do
+  for k, v in pairs(options) do
     savedOptions[k] = v
   end
 
@@ -1021,7 +1008,8 @@ local addonSettingsCategoryID, characterSettingsElementID
 function Config:RegisterAddonSettingsPanel()
   local namespace = ADDON_NAME
   local addonOptions = Config:BuildAceConfigOptions()
-  
+  -- addonOptions == savedOptions
+
   ---@type AceConfig-3.0
   local AceConfig = LibStub("AceConfig-3.0")
   AceConfig:RegisterOptionsTable(namespace, addonOptions, { "si", "savedinstances" })

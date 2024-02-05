@@ -1,20 +1,26 @@
+---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
+
+---@class ProgressModule : AceModule, AceEvent-3.0
 local Module = SI:NewModule('Progress', 'AceEvent-3.0')
+
 local Tooltip = SI:GetModule('Tooltip')
+---@cast Tooltip TooltipModule
 
 ---@class SingleQuestEntry
 ---@field type "single"
----@field expansion number?
+---@field expansion number
 ---@field index number
 ---@field name string
 ---@field questID number
 ---@field reset "none" | "daily" | "weekly"
----@field persists boolean
+---@field persists boolean # if progress persists after reset period
+---@field disabled boolean|function? # used to disable the preset on init (ie diff game version).
 ---@field fullObjective boolean
 
 ---@class AnyQuestEntry
 ---@field type "any"
----@field expansion number?
+---@field expansion number
 ---@field index number
 ---@field name string
 ---@field questID number[]
@@ -24,7 +30,7 @@ local Tooltip = SI:GetModule('Tooltip')
 
 ---@class QuestListEntry
 ---@field type "list"
----@field expansion number?
+---@field expansion number
 ---@field index number
 ---@field name string
 ---@field questID number[]
@@ -40,7 +46,7 @@ local Tooltip = SI:GetModule('Tooltip')
 
 ---@class CustomEntry
 ---@field type "custom"
----@field expansion number?
+---@field expansion number
 ---@field index number
 ---@field name string
 ---@field reset "none" | "daily" | "weekly"
@@ -48,7 +54,10 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field showFunc fun(store: table, entry: CustomEntry): string?
 ---@field resetFunc nil | fun(store: table, entry: CustomEntry): nil
 ---@field tooltipFunc nil | fun(store: table, entry: CustomEntry, toon: string): nil
+---@field activityCompare nil | fun(left: any, right: any): boolean # used in great-vault-raid and df-renown
 ---@field relatedQuest number[]?
+---@field difficultyNames table<number, string>? # desc needed
+---@field factionIDs number[]? # desc needed
 
 ---@alias ProgressEntry SingleQuestEntry | AnyQuestEntry | QuestListEntry | CustomEntry
 
@@ -67,11 +76,19 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field show boolean?
 ---@field [number] QuestStore?
 
+local GetTitleForQuestID = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo -- GetTitleForQuestID not in Classic/Wrath
+
+local englishToQuestFactionID = {
+  ["Alliance"] = LE_QUEST_FACTION_ALLIANCE,
+  ["Horde"] = LE_QUEST_FACTION_HORDE
+}
+
 ---@type table<string, ProgressEntry>
 local presets = {
   -- Great Vault (Raid)
   ['great-vault-raid'] = {
     type = 'custom',
+    expansion = -1,
     index = 1,
     name = RAIDS,
     reset = 'weekly',
@@ -119,7 +136,6 @@ local presets = {
       local unlocked = store.unlocked
       local rewardWaiting = not not store[1]
       wipe(store)
-
       store.unlocked = unlocked
       store.rewardWaiting = rewardWaiting
     end,
@@ -139,6 +155,7 @@ local presets = {
     type = 'custom',
     index = 2,
     name = PVP,
+    expansion = -1,
     reset = 'weekly',
     func = function(store)
       wipe(store)
@@ -196,6 +213,7 @@ local presets = {
   ['the-world-awaits'] = {
     type = 'single',
     index = 3,
+    expansion = 9,
     name = L["The World Awaits"],
     questID = 72728,
     reset = 'weekly',
@@ -206,6 +224,7 @@ local presets = {
   ['emissary-of-war'] = {
     type = 'single',
     index = 4,
+    expansion = 9,
     name = L["Emissary of War"],
     questID = 72722,
     reset = 'weekly',
@@ -215,6 +234,7 @@ local presets = {
   -- Timewalking
   ['timewalking'] = {
     type = 'any',
+    expansion = -1,
     index = 5,
     name = L["Timewalking Weekend Event"],
     questID = {
@@ -386,6 +406,7 @@ local presets = {
       end
 
       for _, factionID in ipairs(majorFactionIDs) do
+        ---@cast factionIDs table<number, number>
         if not tContains(factionIDs, factionID) then
           if not text then
             text = store[factionID] and store[factionID][1] or '0'
@@ -404,6 +425,7 @@ local presets = {
       local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
 
       local factionIDs = entry.factionIDs
+      ---@cast factionIDs table<number, number>
       for _, factionID in ipairs(factionIDs) do
         if store[factionID] then
           tip:AddLine(
@@ -439,6 +461,7 @@ local presets = {
       2511, -- Iskaara Tuskarr
       2510, -- Valdrakken Accord
     },
+    activityCompare = function() return false end,
   },
   -- Aiding the Accord
   ['df-aiding-the-accord'] = {
@@ -780,7 +803,56 @@ local presets = {
     persists = true,
     fullObjective = false,
   },
+  -- Classic
+  --- Ashenvale Weeklies (S0D)
+  ---@type SingleQuestEntry
+  ["ashenvale-alliance-weeky"] = {
+    type = "single",
+    expansion = 0, -- LE_EXPANSION_CLASSIC
+    index = 1,
+    questID = 79090, -- Repelling Invaders (alliance)
+    name = GetTitleForQuestID(79090) or L["Repelling Invaders"],
+    reset = "weekly",
+    persists = false,
+    fullObjective = true,
+    disabled = (not SI.isSoD) or (englishToQuestFactionID[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_ALLIANCE)
+  },
+  ---@type SingleQuestEntry
+  ["ashenvale-horde-weeky"] = {
+    type = "single",
+    expansion = 0, -- LE_EXPANSION_CLASSIC
+    index = 1,
+    questID = 79098, -- Clear the Forest (horde)
+    name = GetTitleForQuestID(79098) or L["Clear the Forest"],
+    reset = "weekly",
+    persists = false,
+    fullObjective = true,
+    disabled = (not SI.isSoD) or (englishToQuestFactionID[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_HORDE)   
+  },
 }
+
+-- fix to ignore entries not for current expansion in classic/wotlk clients
+---@param entry ProgressEntry
+local isEntryValid = function(entry)
+  -- first check the `disabled` property
+  if (type(entry.disabled) == "function" and entry.disabled()) 
+  or entry.disabled 
+  then return false end
+
+  -- let the `-1` index be reserved for retail stuff.
+  if SI.isRetail then return true
+  elseif entry.expansion < 0 then return false end
+
+  -- accept any entry that is for the current or previous expansion.
+  return entry.expansion <= GetExpansionLevel()
+end
+
+--- could also just make seperate preset tables for each version of the game and just assign the correct one to `presets` based on the version of the game.
+for key, entry in pairs(presets) do
+  if not isEntryValid(entry) then
+    presets[key] = nil
+  end
+end
 
 ---update the progress of quest to the store
 ---@param store QuestStore
@@ -792,22 +864,41 @@ local function UpdateQuestStore(store, questID)
   if C_QuestLog.IsQuestFlaggedCompleted(questID) then
     store.show = true
     store.isComplete = true
-
     return true
   elseif not C_QuestLog.IsOnQuest(questID) then
     store.show = false
-
     return false
   else
-    local showText
-    local leaderboardCount = C_QuestLog.GetNumQuestObjectives(questID)
+    local displayText
+    local allFinished = true
+    local GetQuestObjectiveInfo = GetQuestObjectiveInfo
+    local GetNumQuestObjectives = C_QuestLog.GetNumQuestObjectives
+
+    -- Wotlk/Era client compatibility, these API's will likely be made available for Cataclysm classic.
+    if not (GetQuestObjectiveInfo and GetNumQuestObjectives) then
+      local objectives = C_QuestLog.GetQuestObjectives(questID)
+      GetNumQuestObjectives = function()
+        return #objectives
+      end
+      GetQuestObjectiveInfo = function(_, index, _)
+        return objectives[index].text, 
+          objectives[index].objectiveType,
+          objectives[index].finished, 
+          objectives[index].numFulfilled,
+          objectives[index].numRequired
+      end
+    end
+
+    local leaderboardCount = GetNumQuestObjectives(questID)
     for i = 1, leaderboardCount do
-      local text, objectiveType, _, numFulfilled, numRequired = GetQuestObjectiveInfo(questID, i, false)
+      local text, objectiveType, finished, numFulfilled, numRequired = GetQuestObjectiveInfo(questID, i, false)
       ---@cast text string
       ---@cast objectiveType "item"|"object"|"monster"|"reputation"|"log"|"event"|"player"|"progressbar"
-      ---@cast _ boolean
+      ---@cast finished boolean
       ---@cast numFulfilled number
       ---@cast numRequired number
+
+      allFinished = allFinished and finished
 
       local objectiveText
       if objectiveType == 'progressbar' then
@@ -823,9 +914,9 @@ local function UpdateQuestStore(store, questID)
         store.objectiveType = objectiveType
         store.numFulfilled = numFulfilled
         store.numRequired = numRequired
-        showText = objectiveText
+        displayText = objectiveText
       else
-        showText = showText .. ' ' .. objectiveText
+        displayText = displayText .. ' ' .. objectiveText
       end
     end
 
@@ -833,7 +924,7 @@ local function UpdateQuestStore(store, questID)
     store.isComplete = false
     store.isFinish = C_QuestLog.IsComplete(questID)
     store.leaderboardCount = leaderboardCount
-    store.text = showText
+    store.text = displayText
 
     return true
   end
@@ -904,7 +995,7 @@ local function ShowQuestListStore(store, entry)
   return completed .. "/" .. total
 end
 
----handle tooltip of quest
+---handle tooltip of Single/Any quest entry
 local function TooltipQuestStore(_, arg)
   local store, entry, toon = unpack(arg)
   ---@cast store QuestStore
@@ -915,18 +1006,28 @@ local function TooltipQuestStore(_, arg)
   tip:AddHeader(SI:ClassColorToon(toon), entry.name)
 
   if store.isComplete then
-    tip:AddLine(SI.questCheckMark)
+    local line = tip:AddLine()
+    tip:SetCell(line, 1, ("%s %s"):format(QUEST_COMPLETE, SI.questCheckMark), nil, 'LEFT', 2)
   elseif store.isFinish then
-    tip:AddLine(SI.questTurnin)
+    local line = tip:AddLine(SI.questTurnin)
+    tip:SetCell(line, 1, ("%s %s"):format(QUEST_WATCH_QUEST_READY, SI.questTurnin), nil, 'LEFT', 2)
   elseif store.leaderboardCount and store.leaderboardCount > 0 then
+    tip:AddLine(IN_PROGRESS)
     for i = 1, store.leaderboardCount do
       tip:AddLine("")
       tip:SetCell(i + 1, 1, store[i], nil, 'LEFT', 2)
     end
   end
-
-  tip:Show()
-end
+  local questID = type(entry.questID) == "number" and entry.questID
+  if questID then
+    ---@type string
+    local link = LinkUtil.FormatLink("quest", questID , questID, SI.db.Toons[toon].Level) 
+    SI:Debug("Generating tooltip using quest hyperlink: [%s]", link)
+    link = link:gsub('|', '\124')
+    tip.AddQuestDescription(link)
+    tip:Show()
+  end
+end 
 
 ---handle tooltip of quest list
 local function TooltipQuestListStore(_, arg)
@@ -1004,17 +1105,18 @@ function Module:OnInitialize()
       User = {},
     }
   end
-
+  --- validate the entries in the account wide Progress database
   for key in pairs(presets) do
     if type(SI.db.Progress.Enable[key]) ~= 'boolean' then
       SI.db.Progress.Enable[key] = true
     end
-
+    
     if type(SI.db.Progress.Order[key]) ~= 'number' then
       SI.db.Progress.Order[key] = 50
     end
   end
-
+  
+  --- validate the entries in the player specific Progress database
   for key in pairs(SI.db.Progress.User) do
     if type(SI.db.Progress.Enable[key]) ~= 'boolean' then
       SI.db.Progress.Enable[key] = true
@@ -1024,7 +1126,6 @@ function Module:OnInitialize()
       SI.db.Progress.Order[key] = 50
     end
   end
-
   local map = {
     [1] = 'great-vault-pvp', -- PvP Conquest
     [2] = 'bfa-island', -- Island Expedition
@@ -1049,7 +1150,8 @@ function Module:OnInitialize()
     [22] = 'df-fighting-is-its-own-reward', -- Fighting is Its Own Reward
   }
 
-  for i = 1, 22 do
+  -- remove old entries from saved vars 
+  for i = 1, #map do
     -- enable status migration
     if SI.db.Tooltip['Progress' .. i] ~= nil and map[i] then
       SI.db.Progress.Enable[map[i]] = SI.db.Tooltip['Progress' .. i]
@@ -1057,50 +1159,50 @@ function Module:OnInitialize()
     SI.db.Tooltip['Progress' .. i] = nil
   end
 
-  for _, db in pairs(SI.db.Toons) do
-    if db.Progress then
+  for _, characterData in pairs(SI.db.Toons) do
+    if characterData.Progress then
       -- old database migration
       for oldKey, newKey in pairs(map) do
-        if db.Progress[oldKey] then
-          db.Progress[newKey] = db.Progress[oldKey]
-          db.Progress[oldKey] = nil
+        if characterData.Progress[oldKey] then
+          characterData.Progress[newKey] = characterData.Progress[oldKey]
+          characterData.Progress[oldKey] = nil
         end
       end
 
       -- database cleanup
-      for key in pairs(db.Progress) do
+      for key in pairs(characterData.Progress) do
         if not presets[key] and not SI.db.Progress.User[key] then
-          db.Progress[key] = nil
+          characterData.Progress[key] = nil
         else
           -- check store type
           local entry = presets[key] or SI.db.Progress.User[key]
-          local store = db.Progress[key]
+          local characterStore = characterData.Progress[key]
 
-          if type(store) ~= 'nil' then
+          if type(characterStore) ~= 'nil' then
             -- store contains somethings
             if entry.type == 'list' then
               ---@cast entry QuestListEntry
-              if type(store) ~= 'table' then
+              if type(characterStore) ~= 'table' then
                 -- broken store, should be table
-                db.Progress[key] = {}
+                characterData.Progress[key] = {}
               end
 
               for _, questID in ipairs(entry.questID) do
-                if store[questID] == true then
+                if characterStore[questID] == true then
                   -- simple boolean for list entry
-                  store[questID] = {
+                  characterStore[questID] = {
                     show = true,
                   }
-                elseif type(store[questID]) ~= 'table' then
-                  -- broken store or false, should be table or nil
-                  store[questID] = nil
+                elseif type(characterStore[questID]) ~= 'table' then
+                  -- broken store or `false`, should be table or nil
+                  characterStore[questID] = nil
                 end
               end
             elseif entry.type ~= 'custom' then
               ---@cast entry SingleQuestEntry|AnyQuestEntry
-              if type(store) ~= 'table' then
+              if type(characterStore) ~= 'table' then
                 -- broken store, should be table
-                db.Progress[key] = {}
+                characterData.Progress[key] = {}
               end
             end
           end
@@ -1115,9 +1217,8 @@ function Module:OnInitialize()
 end
 
 function Module:OnEnable()
-  self:RegisterEvent('PLAYER_ENTERING_WORLD', 'UpdateAll')
-  self:RegisterEvent('QUEST_LOG_UPDATE', 'UpdateAll')
-
+  self:RegisterEvent('PLAYER_ENTERING_WORLD', function() self:UpdateAll() end)
+  self:RegisterEvent('QUEST_LOG_UPDATE', function() self:UpdateAll() end)
   self:UpdateAll()
 end
 
@@ -1266,6 +1367,8 @@ function Module:ResetEntry(key, entry, toon)
   end
 end
 
+---Resets all `"daily"` type Progress entries for a given character. 
+---@param toon string The name of the character to reset
 function Module:OnDailyReset(toon)
   for key, entry in pairs(presets) do
     if entry.reset == 'daily' then
@@ -1280,6 +1383,8 @@ function Module:OnDailyReset(toon)
   end
 end
 
+---Resets all `"weekly"` type Progress entries for a given character.
+---@param toon string The name of the character to reset
 function Module:OnWeeklyReset(toon)
   for key, entry in pairs(presets) do
     if entry.reset == 'weekly' then
@@ -1405,19 +1510,19 @@ do
     }
   end
 
-  ---Clean store of user entry
-  ---@param key string
+  ---Removes a user progress entry, specified by its UID key, from the `Toon.Progress` table for all tracked toons.
+  ---@param key string unique id of the user entry to remove.
   function Module:CleanUserEntryStore(key)
-    for _, db in pairs(SI.db.Toons) do
-      if db.Progress and db.Progress[key] then
-        db.Progress[key] = nil
+    for _, toonData in pairs(SI.db.Toons) do
+      if toonData.Progress and toonData.Progress[key] then
+        toonData.Progress[key] = nil
       end
     end
   end
 
   ---Add user entry
   ---@param entry ProgressEntry
-  ---@return string key
+  ---@return string key Randomly generated unique key for the user entry.
   function Module:AddUserEntry(entry)
     local maxIndex = 0
     for _, oldEntry in pairs(SI.db.Progress.User) do
@@ -1464,23 +1569,29 @@ do
     Module:BuildDisplayOrder()
   end
 
+  --- Generate AceConfig options table for the "Progress" sub-section of the addon settings panel.
+  ---@param order number relative position of item in the settings panel (default = 100, 0=first, -1=last)
+  ---@return AceConfig.OptionsTable options The AceConfig options table
   function Module:BuildOptions(order)
     ---@type SingleQuestEntry
     local userSingleEntry = {
+      index = 0,
       type = 'single',
       name = '',
+      expansion = -1,
       questID = 0,
       reset = "none",
       persists = false,
       fullObjective = false,
     }
-
+    
     local userSingleEntryValidate = function()
       if #(userSingleEntry.name) > 0 and userSingleEntry.questID and userSingleEntry.questID > 0 then
         return true
       end
     end
-
+    
+    ---@type AceConfig.OptionsTable
     options = {
       order = order,
       type = 'group',
@@ -1605,7 +1716,7 @@ do
     }
 
     for key, entry in pairs(presets) do
-      if entry.expansion then
+      if entry.expansion and entry.expansion >= 0 then
         if not options.args.Enable.args.Presets.args['Expansion' .. entry.expansion .. 'Header'] then
           options.args.Enable.args.Presets.args['Expansion' .. entry.expansion .. 'Header'] = {
             order = (entry.expansion + 1) * 100,
@@ -1641,7 +1752,6 @@ end
 ---@param questID number
 function Module:IsEntryContainsQuest(entry, questID)
   if entry.type == 'single' then
-    ---@cast entry SingleQuestEntry
     return entry.questID == questID
   elseif entry.type == 'any' or entry.type == 'list' then
     ---@cast entry AnyQuestEntry|QuestListEntry
@@ -1672,18 +1782,16 @@ function Module:ShowTooltip(tooltip, columns, showall, preshow)
   for _, key in ipairs(showall and self.displayAll or self.display) do
     local entry = presets[key] or SI.db.Progress.User[key]
     local show = false
-    for _, t in cpairs(SI.db.Toons, true) do
-      local store = t.Progress and t.Progress[key]
-      if (
-        showall or
+    for _, characterData in cpairs(SI.db.Toons, true) do
+      local store = characterData.Progress and characterData.Progress[key]
+      if (showall or
         (entry.type ~= 'custom' and store and store.show) or
-        (entry.type == 'custom' and store and entry.showFunc(store, entry))
+        (entry.type == 'custom' and store and entry.showFunc(store, entry --[[@as CustomEntry]]))
       ) then
         show = true
         break
       end
     end
-
     if show then
       if first then
         preshow()

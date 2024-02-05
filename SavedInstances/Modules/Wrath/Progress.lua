@@ -1,7 +1,7 @@
 ---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
 
----@class ProgressModule.Wrath : AceModule, AceEvent-3.0
+---@class ProgressModule : AceModule, AceEvent-3.0
 local Module = SI:NewModule('Progress', 'AceEvent-3.0')
 
 local Tooltip = SI:GetModule('Tooltip')
@@ -76,8 +76,9 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field show boolean?
 ---@field [number] QuestStore?
 
-local GetTitleForQuestID = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo
-local englishToQuestFaction = {
+local GetTitleForQuestID = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo -- GetTitleForQuestID not in Classic/Wrath
+
+local englishToQuestFactionID = {
   ["Alliance"] = LE_QUEST_FACTION_ALLIANCE,
   ["Horde"] = LE_QUEST_FACTION_HORDE
 }
@@ -383,6 +384,11 @@ local presets = {
       local majorFactionIDs = C_MajorFactions.GetMajorFactionIDs(LE_EXPANSION_DRAGONFLIGHT)
       for _, factionID in ipairs(majorFactionIDs) do
         local data = C_MajorFactions.GetMajorFactionData(factionID)
+        local currentRepValue, threshold = C_Reputation.GetFactionParagonInfo(factionID)
+        if currentRepValue and threshold then
+          data.renownReputationEarned = currentRepValue % threshold
+          data.renownLevelThreshold = threshold
+        end
         store[factionID] = data and {data.renownLevel, data.renownReputationEarned, data.renownLevelThreshold}
       end
     end,
@@ -797,7 +803,7 @@ local presets = {
     reset = "weekly",
     persists = false,
     fullObjective = true,
-    disabled = (not SI.isSoD) or (englishToQuestFaction[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_ALLIANCE)
+    disabled = (not SI.isSoD) or (englishToQuestFactionID[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_ALLIANCE)
   },
   ---@type SingleQuestEntry
   ["ashenvale-horde-weeky"] = {
@@ -809,13 +815,14 @@ local presets = {
     reset = "weekly",
     persists = false,
     fullObjective = true,
-    disabled = (not SI.isSoD) or (englishToQuestFaction[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_HORDE)   
+    disabled = (not SI.isSoD) or (englishToQuestFactionID[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_HORDE)   
   },
 }
 
--- fix to ignore entries not for current expansion in classic clients
+-- fix to ignore entries not for current expansion in classic/wotlk clients
 ---@param entry ProgressEntry
 local isEntryValid = function(entry)
+  -- first check the `disabled` property
   if (type(entry.disabled) == "function" and entry.disabled()) 
   or entry.disabled 
   then return false end
@@ -845,13 +852,12 @@ local function UpdateQuestStore(store, questID)
   if C_QuestLog.IsQuestFlaggedCompleted(questID) then
     store.show = true
     store.isComplete = true
-
     return true
   elseif not C_QuestLog.IsOnQuest(questID) then
     store.show = false
     return false
   else
-    local showText
+    local displayText
     local allFinished = true
     local GetQuestObjectiveInfo = GetQuestObjectiveInfo
     local GetNumQuestObjectives = C_QuestLog.GetNumQuestObjectives
@@ -896,9 +902,9 @@ local function UpdateQuestStore(store, questID)
         store.objectiveType = objectiveType
         store.numFulfilled = numFulfilled
         store.numRequired = numRequired
-        showText = objectiveText
+        displayText = objectiveText
       else
-        showText = showText .. ' ' .. objectiveText
+        displayText = displayText .. ' ' .. objectiveText
       end
     end
 
@@ -906,7 +912,7 @@ local function UpdateQuestStore(store, questID)
     store.isComplete = false
     store.isFinish = allFinished
     store.leaderboardCount = leaderboardCount
-    store.text = showText
+    store.text = displayText
 
     return true
   end
@@ -977,7 +983,7 @@ local function ShowQuestListStore(store, entry)
   return completed .. "/" .. total
 end
 
----handle tooltip of quest
+---handle tooltip of Single/Any quest entry
 local function TooltipQuestStore(_, arg)
   local store, entry, toon = unpack(arg)
   ---@cast store QuestStore
@@ -1734,7 +1740,6 @@ end
 ---@param questID number
 function Module:IsEntryContainsQuest(entry, questID)
   if entry.type == 'single' then
-    ---@cast entry SingleQuestEntry
     return entry.questID == questID
   elseif entry.type == 'any' or entry.type == 'list' then
     ---@cast entry AnyQuestEntry|QuestListEntry

@@ -1,9 +1,9 @@
 # Todo
 
-- [x] Move all the logic relating to tracking instance lockouts out of `Core.lua` and into its own module file. 
-
 - [x] Compare retail functionality between this addon and the original
     - From a quick usage of the addon on retail all seems to be working but its hard to test every feature. (and unit testing feels like too much to implement for an addon)
+
+- [ ] Move all the logic relating to tracking instance lockouts out of `Core.lua` and into its own module file. 
 
 - [ ] Add caching for the tooltip scanner, use the hyperlink as a key maybe
     - tooltip scanning used for Quest tooltip, boss names on instance tooltip, and currency tooltip (for classic only).

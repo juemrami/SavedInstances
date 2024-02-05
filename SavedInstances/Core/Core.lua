@@ -115,7 +115,7 @@ local TradeSkill = SI:GetModule('TradeSkill')
 local Currency = SI:GetModule('Currency')
 ---@cast Config ConfigModule
 ---@cast Tooltip TooltipModule
----@cast Progress ProgressModule.Wrath
+---@cast Progress ProgressModule
 ---@cast TradeSkill TradeSkillModule
 ---@cast Currency CurrencyModule
 
@@ -1368,21 +1368,23 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
   local defaultIndicators = SI.defaultDB.Indicators
 
   ---@type boolean?
-  local classColor = userIndicators[category .. "ClassColor"] ~= nil 
-                    and userIndicators[category .. "ClassColor"] 
-                    or defaultIndicators[category .. "ClassColor"]
-                    
+  local useClassColor;
+  if userIndicators[category .. "ClassColor"] ~= nil then
+    useClassColor = userIndicators[category .. "ClassColor"]
+  else useClassColor = defaultIndicators[category .. "ClassColor"] end
+
+  SI:Debug("Generating Difficulty String for %s on %s: %s", instanceKey, toon, category)
+  SI:Debug("use ClassColor: %s", useClassColor and "true" or "false")     
   if isExpired then
     color = GRAY_COLOR
-  elseif classColor then
+  elseif useClassColor then
     color = (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[SI.db.Toons[toon].Class]) 
       or RAID_CLASS_COLORS[SI.db.Toons[toon].Class]
-  else
-    --- not sure what this here is for. why would the defualt be `nil`, if its a default just default it to be defined and this branch should never execute, because `classColor` will always be defined.
+  else -- use color picker color
     userIndicators[category.."Color"]  = userIndicators[category.."Color"] or defaultIndicators[category.."Color"]
     color = userIndicators[category.."Color"]
   end
-  ---@type "KILLED/TOTAL"|string
+  ---@type string
   local progressText = userIndicators[category.."Text"] or defaultIndicators[category.."Text"]
   local indicatorIcon = userIndicators[category.."Indicator"] or defaultIndicators[category.."Indicator"]
   local displayStr = progressText
@@ -2821,6 +2823,7 @@ hoverTooltip.ShowLFRTooltip = function (cell, arg, ...)
   indicatortip:Show()
 end
 
+-- Dungeon and raid encounter info tooltip
 hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
   local instanceKey = arg[1]
   local toon = arg[2]
@@ -2888,26 +2891,30 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
     end
     SI.ScanTooltip:SetOwner(UIParent, 'ANCHOR_NONE')
    
+    local isTooltipParsed = false
     -- in classic/wotlk there is no tooltip for the saved instances hyperlink (not sure if bug or intedned)
-    if SI.isRetail then SI.ScanTooltip:SetHyperlink(link) end
-    SI.ScanTooltip:Show()
-    local name = SI.ScanTooltip:GetName()
-    local isTooltipParsed
-    for i=2,SI.ScanTooltip:NumLines() do
-      local left,right = _G[name.."TextLeft"..i], _G[name.."TextRight"..i]
-      if right and right:GetText() then
-        local n = indicatorTip:AddLine()
-        indicatorTip:SetCell(n, 1, coloredText(left),nil, "LEFT", 2)
-        indicatorTip:SetCell(n, 3, coloredText(right),nil, "RIGHT", 1)
-        isTooltipParsed = true
-      else
-        indicatorTip:SetCell(indicatorTip:AddLine(),1,coloredText(left),nil,"CENTER",3)
+    if SI.isRetail then
+      SI:Debug("Getting Encounter Info via Tooltip Scan for %s", link)
+      SI.ScanTooltip:SetHyperlink(link) 
+      SI.ScanTooltip:Show()
+      local name = SI.ScanTooltip:GetName()
+      for i=2,SI.ScanTooltip:NumLines() do
+        local left,right = _G[name.."TextLeft"..i], _G[name.."TextRight"..i]
+        if right and right:GetText() then
+          local n = indicatorTip:AddLine()
+          indicatorTip:SetCell(n, 1, coloredText(left),nil, "LEFT", 2)
+          indicatorTip:SetCell(n, 3, coloredText(right),nil, "RIGHT", 1)
+          isTooltipParsed = true
+        else
+          indicatorTip:SetCell(indicatorTip:AddLine(),1,coloredText(left),nil,"CENTER",3)
+        end
       end
     end
     if not isTooltipParsed then 
       local localizedEncounters = SI:GetInstanceExceptionInfo(instance.lfgDungeonID)
       local encounterBitmap = tonumber(link:match(":(%d+)\124h"))
       if localizedEncounters and encounterBitmap then
+        SI:Debug("Getting Encounter Info via hardcoded Instance Exception for %s", link)
         for i = 1, localizedEncounters.total do
           local newLine = indicatorTip:AddLine()
           indicatorTip:SetCell(newLine, 1, localizedEncounters[i], nil, "LEFT", 2)
@@ -2918,7 +2925,9 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
           indicatorTip:SetCell(newLine, 3, text,nil, "RIGHT", 1)
           encounterBitmap = bit.rshift(encounterBitmap,1)
         end
-      else -- no hardcoded list of encounters in the exceptions table (this should be the default)
+      else 
+        -- no hardcoded list of encounters in the exceptions table (this should be the default for classic since no hyperlink support)
+        SI:Debug("Getting Encounter Info via `encounter` saved var data for Instances.[\"%s\"].[\"%s\"].[\"%i\"]",instanceKey, toon, difficultyID)
         if lockoutInfo.encounters then
           for i = 1, #lockoutInfo.encounters do
             local bossName = lockoutInfo.encounters[i].localizedName
@@ -4369,15 +4378,15 @@ SI.cpairs = cpairs
 -----------------------------------------------------------------------------------------------
 -- tooltip event handlers
 
--- Not in Wrath
--- local function OpenWeeklyRewards()
---   if _G.WeeklyRewardsFrame and _G.WeeklyRewardsFrame:IsVisible() then return end
+local function OpenWeeklyRewards()
+  if not SI.isRetail then return end
+  if _G.WeeklyRewardsFrame and _G.WeeklyRewardsFrame:IsVisible() then return end
 
---   if not C_AddOns.IsAddOnLoaded('Blizzard_WeeklyRewards') then
---     C_AddOns.LoadAddOn('Blizzard_WeeklyRewards')
---   end
---   _G.WeeklyRewardsFrame:Show()
--- end
+  if not C_AddOns.IsAddOnLoaded('Blizzard_WeeklyRewards') then
+    C_AddOns.LoadAddOn('Blizzard_WeeklyRewards')
+  end
+  _G.WeeklyRewardsFrame:Show()
+end
 
 local function OpenLFD(self, instanceid, button)
   if LFDParentFrame and LFDParentFrame:IsVisible() and LFDQueueFrame.type ~= instanceid then
@@ -4440,7 +4449,7 @@ local function addColumns(columns, toon, tooltip)
 end
 SI.scaleCache = {}
 
---- The function responsible for generating the addons minimap saved instances tooltip
+--- The function responsible for generating the addons main tooltip
 ---@param anchor Frame
 function SI:ShowTooltip(anchor)
   local showall = ShowAll()
