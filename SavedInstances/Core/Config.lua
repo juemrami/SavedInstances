@@ -959,7 +959,7 @@ function Config:BuildAceConfigOptions()
     savedOptions[k] = v
   end
 
-  if SI.isRetail then
+  if SI.isRetail and Warfront then
     ---@diagnostic disable-next-line: undefined-field
     local warfront = Warfront:BuildOptions(34)
     for k, v in pairs(warfront) do

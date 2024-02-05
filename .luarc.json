@@ -294,7 +294,11 @@
         "LE_QUEST_FACTION_HORDE",
         "ITEM_UNIQUE",
         "ITEM_UNIQUE_MULTIPLE",
-        "WeeklyRewardsFrame"
+        "WeeklyRewardsFrame",
+        "QUEST_COMPLETE",
+        "QUEST_WATCH_QUEST_READY",
+        "IN_PROGRESS",
+        "LinkUtil"
     ],
     "diagnostics.disable": [
         "deprecated",

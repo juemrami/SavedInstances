@@ -24,3 +24,5 @@
 - [ ] Migrate changes from `/Modules/Wrath/Progress.lua` into `/Modules/Progress.lua`
 
 - [ ] World buff tracking for classic.
+
+- [ ] Modify modules to be able to loaded on any client but only functional on the client they are intended for. (ie indexing any function/member on say `Callings` or `Warfront` modules while not SI.isRetail should return nil but still be indexable)
