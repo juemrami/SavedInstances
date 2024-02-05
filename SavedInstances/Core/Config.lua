@@ -147,13 +147,14 @@ local function GetIndicatorOptions()
             local r = color[1]
             local g = color[2]
             local b = color[3]
+            local a
             --- id be using color mixin going forward. `nil` check required for backwards compatibility.
             if color.GetRGBA then
               ---@cast color ColorMixin
               r, g, b, a = color:GetRGBA()
             end
             -- SI:Debug("Color picker GET | r: %s, g: %s, b: %s, a: %s", r or "nil", g or "nil", b or "nil", a or "nil")
-            return r, g, b, nil
+            return r, g, b, a
           end,
           set = function(info, r, g, b, ...)
             assert(r and g and b, "Color picker returned nil values")

@@ -4673,7 +4673,7 @@ function SI:ShowTooltip(anchor)
           if showcol[diffID] then
             local col = columns[toon..base]
             tooltip:SetCell(row, col,
-              DifficultyString(instance, diffID, toon, inst[toon][diffID].Expires == 0, span), nil, nil, span)
+              DifficultyString(instance, diffID, toon, inst[toon][diffID].Expires == 0), nil, nil, span)
             tooltip:SetCellScript(row, col, "OnEnter", hoverTooltip.ShowIndicatorTooltip, {instance, toon, diffID})
             tooltip:SetCellScript(row, col, "OnLeave", CloseTooltips)
             if SI.LFRInstances[inst.lfgDungeonID] then
