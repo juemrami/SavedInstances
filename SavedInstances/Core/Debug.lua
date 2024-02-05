@@ -16,9 +16,12 @@ local UnitLevel = UnitLevel
 
 local SecondsToTime = SecondsToTime
 
-function SI:Debug(...)
+--- Adds a message to chat prefixed with the addon name.
+---@param  str string
+---@param ... any format arguments, if any, for the string 
+function SI:Debug(str,...)
   if not SI or not SI.db or SI.db.Tooltip.DebugMode then
-    SI:ChatMsg(...)
+    SI:ChatMsg(str,...)
   end
 end
 
@@ -28,7 +31,7 @@ function SI:TimeDebug()
   SI:ChatMsg("Realm: %s (%s)", GetRealmName(), SI:GetRegion())
   SI:ChatMsg("Zone: %s (%s)", GetRealZoneText(), SI:GetCurrentMapAreaID())
   SI:ChatMsg("time() = %s, GetTime() = %s", time(), GetTime())
-  SI:ChatMsg("Local time: %s local", date("%Y/%m/%d %H:%M:%S"))
+  SI:ChatMsg("Local time: %s local", tostring(date("%Y/%m/%d %H:%M:%S")))
   SI:ChatMsg("GetGameTime: %s:%s server", GetGameTime())
 
   local calender = C_DateAndTime_GetCurrentCalendarTime()
@@ -48,25 +51,25 @@ function SI:TimeDebug()
   time = SI:GetNextDailyResetTime()
   SI:ChatMsg(
     "Next daily reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
+    tostring(date("%Y/%m/%d %H:%M:%S", time)), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 
   time = SI:GetNextWeeklyResetTime()
   SI:ChatMsg(
     "Next weekly reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
+    tostring(date("%Y/%m/%d %H:%M:%S", time)), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 
   time = SI:GetNextDailySkillResetTime()
   SI:ChatMsg(
     "Next skill reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
+    tostring(date("%Y/%m/%d %H:%M:%S", time)), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 
   time = SI:GetNextDarkmoonResetTime()
   SI:ChatMsg(
     "Next Darkmoon reset: %s local, %s server",
-    date("%Y/%m/%d %H:%M:%S", time), date("%Y/%m/%d %H:%M:%S", time + offset)
+    tostring(date("%Y/%m/%d %H:%M:%S", time)), date("%Y/%m/%d %H:%M:%S", time + offset)
   )
 end
 
@@ -96,10 +99,12 @@ do
       SI:ChatMsg("No saved quest list")
     elseif cmd == "save" then
       SI:ChatMsg("Saved quest list")
+      ---@diagnostic disable-next-line: inject-field
       t.completedquests = ql
     elseif cmd == "clear" then
       SI:ChatMsg("Cleared quest list")
       SI.completedquests = nil
+      ---@diagnostic disable-next-line: inject-field
       t.completedquests = nil
       return
     elseif cmd and #cmd > 0 then

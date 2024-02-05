@@ -289,9 +289,15 @@
         "RED_FONT_COLOR",
         "GameTooltip_SetBasicTooltip",
         "GetTradeSkillInfo",
-        "WorldFrame"
+        "WorldFrame",
+        "LE_QUEST_FACTION_ALLIANCE",
+        "LE_QUEST_FACTION_HORDE",
+        "ITEM_UNIQUE",
+        "ITEM_UNIQUE_MULTIPLE",
+        "WeeklyRewardsFrame"
     ],
     "diagnostics.disable": [
-        "deprecated"
+        "deprecated",
+        "inject-field"
     ]
 }

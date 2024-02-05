@@ -33,7 +33,7 @@ end
 
 --- Adds a message to chat prefixed with the addon name.
 ---@param str string
----@param ... any format arguments, if any, for the string 
+---@param ... (string|number) format arguments, if any, for the string 
 function SI:ChatMsg(str, ...)
   DEFAULT_CHAT_FRAME:AddMessage('|cFFFF0000SavedInstances|r: ' .. format(str, ...))
 end

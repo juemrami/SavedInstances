@@ -22,3 +22,5 @@
 - [ ] compare the instance history tracking to something like Nova Instance Tracker, and see if there is anything that can be improved upon.
 
 - [ ] Migrate changes from `/Modules/Wrath/Progress.lua` into `/Modules/Progress.lua`
+
+- [ ] World buff tracking for classic.
