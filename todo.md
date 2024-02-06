@@ -1,5 +1,7 @@
 # Todo
 
+- [ ] Add option to ignore characters on servers with a different season (ie dont show SoD characters while on an SoM or Hardcore character unless toggled)
+
 - [x] Compare retail functionality between this addon and the original
     - From a quick usage of the addon on retail all seems to be working but its hard to test every feature. (and unit testing feels like too much to implement for an addon)
 
@@ -15,7 +17,6 @@
     - up whats being saved to
     - anything thats super computationally expensive should be saved to SavedVars but thats it. 
 
-- [ ] Add option to ignore characters on servers with a different season (ie dont show SoD characters while on an SoM or Hardcore character unless toggled)
 
 - [ ] add category headers for the currencies in classic, so the options dont look as complicated/messy for it. (since there is alot of currencies to pick from)
 

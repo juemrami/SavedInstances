@@ -4253,139 +4253,144 @@ do
   local nextIndex
   local sortedPosition
   
+  
+  -- get the character index and data for the next character
   local function cnext(characters, idx)
-    local realmOrToon = sortEntries[nextIndex]
-    if not realmOrToon then
-      return nil
-    else
-      nextIndex = nextIndex + 1
-      local toonIndex = realmOrToon[sortedPosition]
-      return toonIndex, characters[toonIndex]
-    end
+    local realmGroup = sortEntries[nextIndex]
+    if not realmGroup then return nil end -- end of table reached
+    
+    nextIndex = nextIndex + 1
+    --- last sortedPosition should be the name for highest sorted current character
+    local toonIndex = realmGroup[sortedPosition]
+    return toonIndex, characters[toonIndex]
   end
 
-  local function cpairs_sort(a,b)
+  -- returns `true` if at least value in `t1` is less than the corresponding value in `t2`
+  local function cpairs_sort(t1, t2) 
     -- generic multi-key sort
-    for k,av in ipairs(a) do
-      local bv = b[k]
-      if av ~= bv then
-        return av < bv
+    for idx, val1 in ipairs(t1) do
+      local val2 = t2[idx]
+      if val1 ~= val2 then
+        return val1 < val2
       end
     end
     return false -- required for sort stability when a==a
   end
 
-  ---@generic T: table, K, V
-  ---@param characters T
-  ---@param useCache boolean?
-  ---@return fun(chars: T, idx: number?): K, V
+  ---@generic T: table, V
+  ---@param characters T<string, V>
+  ---@param useCache boolean? # if `true` the function will use the cached `sortEntries` table. 
+  ---@return fun(chars: T, idx: number?): string, V
   ---@return T
   ---@return nil
   cpairs = function(characters, useCache)
-    local settings = SI.db.Tooltip
-    local groupSortedIndex ---@type number?
+    local tooltipOptions = SI.db.Tooltip
+    local currGroupPosition ---@type number?
 
-    -- Table keyed by realm group id, contains lowest sorted realm for that group. (alphabetical?)
+    -- Maps a realm group id to the lowest sorted realm (alphabetical) for that group.
     ---@type table<number, string>
-    local realmGroupMin = {}
+    local minRealmForGroup = {}
 
     if not useCache then
-      local currentRealmOrGroupID ---@type (string|number)?
-      currentRealmOrGroupID = GetRealmName()
+      local realmName = GetRealmName()
+      local realmGroupIdx; ---@type integer?
       
-      if settings.ConnectedRealms ~= "ignore" then
-        ---@cast currentRealmOrGroupID string
-        local groupID = SI:getRealmGroup(currentRealmOrGroupID)
-        currentRealmOrGroupID = groupID or currentRealmOrGroupID
+      if tooltipOptions.ConnectedRealms ~= "ignore" then
+        realmGroupIdx = SI:getRealmGroup(realmName)
       end
 
       wipe(sortEntries)
       nextIndex = 1
-      for toonFullName, _ in pairs(characters) do
-        
+      for toonFullName, _ in pairs(characters) do 
         local toonData = SI.db.Toons[toonFullName]
-
         ---@type any, string
-        local firstName, toonRealm = toonFullName:match('^(.*) [-] (.*)$')
+        local _, toonRealm = toonFullName:match('^(.*) [-] (.*)$')
         
         if toonData 
-          and (toonData.Show ~= "never" 
-            or (toonFullName == SI.thisToon and settings.SelfAlways))
-          and (not settings.ServerOnly
-              -- for matching when currentRealmOrGroupID is a string
-              or currentRealmOrGroupID == toonRealm
-              -- for matching when currentRealmOrGroupID is a number
-              or currentRealmOrGroupID == SI:getRealmGroup(toonRealm))
+        and (toonData.Show ~= "never" 
+          or (toonFullName == SI.thisToon and tooltipOptions.SelfAlways))
+        and (not tooltipOptions.ServerOnly
+          or realmName == toonRealm
+          or realmGroupIdx == SI:getRealmGroup(toonRealm))
         then
-          --- Maps a sorted index to either the realm group index for `SI.db.RealmMap` a realm name, specific character name.
+          -- Maps a sorted index to either the realm group index for `SI.db.RealmMap`, or a specific realm name
           ---@type {[number]: string|number}
-          local sortedRealmOrCharacters = {}
+          local sortedRealmOrGroup = {}
+          local sortedCharacters
           sortedPosition = 1
 
-          if settings.SelfFirst then
+          if tooltipOptions.SelfFirst then
             if toonFullName == SI.thisToon then
-              sortedRealmOrCharacters[sortedPosition] = 1
+              -- make the whole realm group 1 the (next) highest sorted position
+              sortedRealmOrGroup[sortedPosition] = 1
             else
-              sortedRealmOrCharacters[sortedPosition] = 2
+              -- followed by realm group two
+              sortedRealmOrGroup[sortedPosition] = 2
             end
             sortedPosition = sortedPosition + 1
           end
-
-          if settings.ServerSort then
-            if settings.ConnectedRealms == "ignore" then
-              sortedRealmOrCharacters[sortedPosition] = toonRealm
+          --- is this sortByServer or sortCharsInServer?
+          if tooltipOptions.ServerSort then
+            if tooltipOptions.ConnectedRealms == "ignore" then
+              -- only add current characters realm to the next highest position
+              sortedRealmOrGroup[sortedPosition] = toonRealm
               sortedPosition = sortedPosition + 1
             else
-              local toonRealmGroupID = SI:getRealmGroup(toonRealm)
-
-              -- connected realm found
-              if toonRealmGroupID then 
-                realmGroupMin = realmGroupMin or {}
-                if not realmGroupMin[toonRealmGroupID] 
-                  or toonRealm < realmGroupMin[toonRealmGroupID] 
+              -- if sorting servers and connected realms is turned on
+              
+              local toonRealmGroup = SI:getRealmGroup(toonRealm)
+              if toonRealmGroup then 
+                -- compare toon to other entries in the same realm group and sort by 
+                -- string value.
+                -- minimumByRealmGroup = minimumByRealmGroup or {}
+                if not minRealmForGroup[toonRealmGroup] 
+                  or toonRealm < minRealmForGroup[toonRealmGroup] 
                 then
                   -- new lowest sorted realm in group
-                  realmGroupMin[toonRealmGroupID] = toonRealm 
+                  minRealmForGroup[toonRealmGroup] = toonRealm 
                 end
-
-                groupSortedIndex = sortedPosition
-                sortedRealmOrCharacters[sortedPosition] = toonRealmGroupID
+                -- keep track of the position that this realm group will be sorted to.
+                currGroupPosition = sortedPosition
+                sortedRealmOrGroup[sortedPosition] = toonRealmGroup
                 sortedPosition = sortedPosition + 1
               else -- if no groupID
+                currGroupPosition = sortedPosition
                 -- use realm name instead of groupID.
-                groupSortedIndex = sortedPosition
-                sortedRealmOrCharacters[sortedPosition] = toonRealm
+                sortedRealmOrGroup[sortedPosition] = toonRealm
                 sortedPosition = sortedPosition + 1
 
               end
-
-              if settings.ConnectedRealms == "group" then
-                sortedRealmOrCharacters[sortedPosition] = toonRealm
+              if tooltipOptions.ConnectedRealms == "group" then
+                sortedRealmOrGroup[sortedPosition] = toonRealm
                 sortedPosition = sortedPosition + 1
               end
             end
           end
-
-          sortedRealmOrCharacters[sortedPosition] = toonData.Order
+          --- whats the point of all the work above if we might just gonna overWrite it with order?
+    
+          -- insert the order of the current character into the next highest position
+          sortedRealmOrGroup[sortedPosition] = toonData.Order
           sortedPosition = sortedPosition + 1
-
-          sortedRealmOrCharacters[sortedPosition] = toonFullName
-          sortEntries[nextIndex] = sortedRealmOrCharacters
+          
+          -- insert the current character Name into the next highest position
+          sortedRealmOrGroup[sortedPosition] = toonFullName
+          sortEntries[nextIndex] = sortedRealmOrGroup
           nextIndex = nextIndex + 1
         end
       end
       
-      -- On a second pass, character names from connected realms
-      -- and sort the names
-      if groupSortedIndex then 
+      -- On a second pass, replace the realm group index with the lowest alphabetically sorted realm in the group for that groupIdx.
+      if currGroupPosition then 
         for _, sortedRealms in ipairs(sortEntries) do
-          local groupID = sortedRealms[groupSortedIndex]
+          local groupID = sortedRealms[currGroupPosition]
           -- check for number incase of its a serverName entry (string)
           if type(groupID) == "number" then
-            sortedRealms[groupSortedIndex] = realmGroupMin[groupID]
+            sortedRealms[currGroupPosition] = minRealmForGroup[groupID]
           end
+        end
+        ---@cast sortEntries table<integer, string>>[]
       end
-      end
+      -- sort the `sortedRealms` entries tables of `sortEntries` by the min realm name of each group.
       table.sort(sortEntries, cpairs_sort)
       -- SI:Debug(cnext_list)
     end
