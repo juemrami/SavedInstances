@@ -77,6 +77,7 @@ local Tooltip = SI:GetModule('Tooltip')
 ---@field [number] QuestStore?
 
 local GetTitleForQuestID = C_QuestLog.GetTitleForQuestID or C_QuestLog.GetQuestInfo -- GetTitleForQuestID not in Classic/Wrath
+local IsQuestComplete = C_QuestLog.IsQuestFlaggedCompleted or C_QuestLog.IsComplete -- Classic us IsComplete
 
 local englishToQuestFactionID = {
   ["Alliance"] = LE_QUEST_FACTION_ALLIANCE,
@@ -861,7 +862,7 @@ end
 local function UpdateQuestStore(store, questID)
   wipe(store)
 
-  if C_QuestLog.IsQuestFlaggedCompleted(questID) then
+  if IsQuestComplete(questID) then
     store.show = true
     store.isComplete = true
     return true
@@ -922,8 +923,12 @@ local function UpdateQuestStore(store, questID)
 
     store.show = true
     store.isComplete = false
-    store.isFinish = C_QuestLog.IsComplete(questID)
+    
+    -- sometimes the API returns false even when all objectives are finished
+    store.isFinish = IsQuestComplete(questID) or allFinished
+    
     store.leaderboardCount = leaderboardCount
+    SI:Debug("Track quest %s IsComplete?: %s", questID, store.isFinish and "Yes" or "No")
     store.text = displayText
 
     return true
@@ -1307,7 +1312,7 @@ function Module:UpdateEntry(key, entry)
     wipe(store)
 
     if entry.unlockQuest then
-      store.show = C_QuestLog.IsQuestFlaggedCompleted(entry.unlockQuest)
+      store.show = IsQuestComplete(entry.unlockQuest)
     else
       store.show = true
     end
