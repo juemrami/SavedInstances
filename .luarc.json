@@ -298,7 +298,8 @@
         "QUEST_COMPLETE",
         "QUEST_WATCH_QUEST_READY",
         "IN_PROGRESS",
-        "LinkUtil"
+        "LinkUtil",
+        "RaidFrame"
     ],
     "diagnostics.disable": [
         "deprecated",

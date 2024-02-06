@@ -811,7 +811,7 @@ local function CurrencyColor(current, max)
     local color = GREENFONT
     if pct >= 1 then
       color = REDFONT
-    elseif pct > 0.75 then
+    elseif pct >= 0.75 then
       color = GOLDFONT
     end
     samt = color .. samt .. FONTEND
@@ -4443,6 +4443,7 @@ local function ReportKeys(self, index, button)
 end
 
 local function OpenCurrency(self, _, button)
+  if SI.isClassicEra then return end
   ToggleCharacter("TokenFrame")
 end
 
@@ -4687,6 +4688,15 @@ function SI:ShowTooltip(anchor)
               local link = inst[toon][diffID].Link
               if link then
                 tooltip:SetCellScript(row, col, "OnMouseDown", ChatLink, link)
+              end
+              if SI.isClassicEra and toon == SI.thisToon then
+                tooltip:SetCellScript(row, col, "OnMouseDown",
+                  function()
+                    if GetNumSavedInstances() > 0 then
+                      OpenFriendsFrame(FRIEND_TAB_RAID)
+                      RaidInfoFrame:Show()
+                    end
+                  end)
               end
             end
             base = base + 1

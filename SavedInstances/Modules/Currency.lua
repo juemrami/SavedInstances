@@ -436,3 +436,23 @@ function Module:UpdateCurrencyItem()
   end
 end
 
+---@param itemID integer?
+---@return table<integer, {text: string, font: FontObject, color: {}}>?
+function Module:ParseCurrencyItemTooltip(itemID)
+  if not itemID then return end
+  if not currencyTooltipCache[itemID] then
+    currencyTooltipCache[itemID] = {}
+  end
+  SI.ScanTooltip:SetHyperlink(LinkUtil.FormatLink("item", " ", itemID))
+  local tooltipInfo = currencyTooltipCache[itemID]
+  for i = 1, SI.ScanTooltip:NumLines() do
+    local line = _G["SavedInstancesScanTooltipTextLeft" .. i]
+    tooltipInfo[i] = tooltipInfo[i] or {}
+    tooltipInfo[i].text = line:GetText()
+    tooltipInfo[i].font = line:GetFontObject()
+    tooltipInfo[i].color = { line:GetTextColor() }
+  end
+  return tooltipInfo
+end
+
+
