@@ -15,11 +15,10 @@ externals:
     SavedInstances/Libs/LibStub: https://repos.wowace.com/wow/libstub/trunk
 
 ignore:
-    - README.md
-    - todo.md
-    - cspell.json
+    - "*.md"
+    - "*.json"
+    - "*.sh"
     - babelfish.lua
-    - update_translations.sh
 
 license-output: LICENSE.txt
 
