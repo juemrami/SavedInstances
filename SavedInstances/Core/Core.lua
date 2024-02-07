@@ -2717,13 +2717,15 @@ hoverTooltip.ShowAccountSummary = function (cell, arg, ...)
   -- Gather money info for all realms and their characters.w
   for toon, toonData in pairs(SI.db.Toons) do 
     local realm = toon:match(" %- (.+)$")
-  end
-  indicatortip:AddLine(L["Characters"], ttoons)
-  indicatortip:AddLine(string.format(L["Level %d Characters"], SI.maxLevel), tmaxtoons)
     local money = toonData.Money or 0
     totalMoney = totalMoney + money
+    local realmInfo = allRealmInfo[realm] 
+      or { ["realm"] = realm, ["money"] = 0, ["cnt"] = 0 }
     realmInfo.money = realmInfo.money + money
     realmInfo.cnt = realmInfo.cnt + 1
+    allRealmInfo[realm] = realmInfo
+    totalTime = totalTime + (toonData.PlayedTotal or 0)
+    totalToons = totalToons + 1
     
     if toonData.Level == SI.maxLevel then
       cappedToons = cappedToons + 1
