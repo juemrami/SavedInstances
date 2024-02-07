@@ -14,7 +14,7 @@
 - [ ] Move any building of AceConfig options into their respective module files. ie currency options should be in `Currency.lua`
 
 - [ ] Clean-up SavedVars (currently seems like theres alot of random junk.)
-    - up whats being saved to
+    
     - anything thats super computationally expensive should be saved to SavedVars but thats it. 
 
 
@@ -29,5 +29,7 @@
 - [ ] Modify modules to be able to loaded on any client but only functional on the client they are intended for. (ie indexing any function/member on say `Callings` or `Warfront` modules while not SI.isRetail should return nil but still be indexable)
 
 - [ ] Hide and disable unused AceConfig option widgets for classic and wrath
+    
     - [ ] General Settings
+    
     - [ ] Indicators

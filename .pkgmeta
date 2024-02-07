@@ -16,6 +16,8 @@ externals:
 
 ignore:
     - README.md
+    - todo.md
+    - cspell.json
     - babelfish.lua
     - update_translations.sh
 

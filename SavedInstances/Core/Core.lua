@@ -4716,6 +4716,7 @@ function SI:ShowTooltip(anchor)
                 tooltip:SetCellScript(row, col, "OnMouseDown",
                   function()
                     if GetNumSavedInstances() > 0 then
+                      ---@diagnostic disable-next-line: undefined-global
                       OpenFriendsFrame(FRIEND_TAB_RAID)
                       RaidInfoFrame:Show()
                     end

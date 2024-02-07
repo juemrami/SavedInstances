@@ -4,3 +4,4 @@ SavedInstances/Libs/*
 .DS_Store
 .vscode/*
 *.code-workspace
+.release/*
