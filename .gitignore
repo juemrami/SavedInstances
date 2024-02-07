@@ -5,3 +5,4 @@ SavedInstances/Libs/*
 .vscode/*
 *.code-workspace
 .release/*
+!.release/release.sh
