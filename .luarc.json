@@ -299,7 +299,8 @@
         "QUEST_WATCH_QUEST_READY",
         "IN_PROGRESS",
         "LinkUtil",
-        "RaidFrame"
+        "RaidFrame",
+        "GameTooltipHeaderText"
     ],
     "diagnostics.disable": [
         "deprecated",

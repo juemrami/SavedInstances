@@ -2708,37 +2708,44 @@ hoverTooltip.ShowAccountSummary = function (cell, arg, ...)
   local indicatortip = Tooltip:AcquireIndicatorTip(2, "LEFT","RIGHT")
   indicatortip:SetCell(indicatortip:AddHeader(),1,GOLDFONT..L["Account Summary"]..FONTEND,nil,"LEFT",2)
 
-  local tmoney = 0
-  local ttime = 0
-  local ttoons = 0
-  local tmaxtoons = 0
-  local r = {}
-  for toon, t in pairs(SI.db.Toons) do -- deliberately include ALL toons
+  local totalMoney = 0
+  local totalTime = 0
+  local totalToons = 0
+  local cappedToons = 0
+  local allRealmInfo = {}
+
+  -- Gather money info for all realms and their characters.w
+  for toon, toonData in pairs(SI.db.Toons) do 
     local realm = toon:match(" %- (.+)$")
-    local money = t.Money or 0
-    tmoney = tmoney + money
-    local ri = r[realm] or { ["realm"] = realm, ["money"] = 0, ["cnt"] = 0 }
-    ri.money = ri.money + money
-    ri.cnt = ri.cnt + 1
-    r[realm] = ri
-    ttime = ttime + (t.PlayedTotal or 0)
-    ttoons = ttoons + 1
-    if t.Level == SI.maxLevel then
-      tmaxtoons = tmaxtoons + 1
-    end
   end
   indicatortip:AddLine(L["Characters"], ttoons)
   indicatortip:AddLine(string.format(L["Level %d Characters"], SI.maxLevel), tmaxtoons)
-  if SI.db.Tooltip.TrackPlayed then
-    indicatortip:AddLine((TIME_PLAYED_TOTAL):format(""),SecondsToTime(ttime))
+    local money = toonData.Money or 0
+    totalMoney = totalMoney + money
+    realmInfo.money = realmInfo.money + money
+    realmInfo.cnt = realmInfo.cnt + 1
+    
+    if toonData.Level == SI.maxLevel then
+      cappedToons = cappedToons + 1
+    end
   end
-  indicatortip:AddLine(TOTAL.." "..MONEY,SI:formatNumber(tmoney,true))
-  local rmoney = {}
-  for _,ri in pairs(r) do table.insert(rmoney,ri) end
-  table.sort(rmoney,function(a,b) return a.money > b.money end)
-  for _,ri in ipairs(rmoney) do
-    if ri.money > 10000*10000 then -- show servers with over 10k wealth
-      indicatortip:AddLine(ri.realm.." "..MONEY,SI:formatNumber(ri.money,true))
+  indicatortip:AddLine(L["Characters"], totalToons)
+  indicatortip:AddLine(string.format(L["Level %d Characters"], SI.maxLevel), cappedToons)
+  if SI.db.Tooltip.TrackPlayed then
+    indicatortip:AddLine((TIME_PLAYED_TOTAL):format(""),SecondsToTime(totalTime))
+  end
+  indicatortip:AddLine(TOTAL.." "..MONEY,SI:formatNumber(totalMoney,true))
+  local realMoney = {}
+
+  for _, info in pairs(allRealmInfo) do table.insert(realMoney, info) end
+  
+  table.sort(realMoney, function(a,b) return a.money > b.money end)
+  for _, realmInfo in ipairs(realMoney) do
+    -- Only show servers with over 10k wealth (on retail)
+    -- on classic, do 100
+    local showServerGoldTreshold = SI.isRetail and (10000*10000) or (10000*100)
+    if realmInfo.money >= showServerGoldTreshold then 
+      indicatortip:AddLine(realmInfo.realm.." "..MONEY,SI:formatNumber(realmInfo.money,true))
     end
   end
 
@@ -2758,12 +2765,20 @@ hoverTooltip.ShowAccountSummary = function (cell, arg, ...)
     indicatortip:AddLine(tstr, ii.desc)
   end
   indicatortip:AddLine("")
-  indicatortip:SetCell(indicatortip:AddLine(),1,
-    string.format(L["These are the instances that count towards the %i instances per hour account limit, and the time until they expire."],
-      SI.histLimit),nil,"LEFT",2,nil,nil,nil,250)
+  indicatortip:SetCell(indicatortip:AddLine(), 1 ,
+    string.format(
+      L["These are the instances that count towards the %i instances per hour account limit, and the time until they expire."],
+      SI.histLimit
+    ),
+    nil, "LEFT", 2, nil, nil, nil, 250
+  );
+  
+  --- weekly rewards are only in retails
+  if SI.isRetail then   
+    indicatortip:AddLine("")
+    indicatortip:SetCell(indicatortip:AddLine(), 1, L["|cffffff00Click|r to open weekly rewards"], nil,"LEFT", indicatortip:GetColumnCount())
+  end
 
-  indicatortip:AddLine("")
-  indicatortip:SetCell(indicatortip:AddLine(), 1, L["|cffffff00Click|r to open weekly rewards"], nil,"LEFT", indicatortip:GetColumnCount())
   indicatortip:Show()
 end
 
@@ -3539,10 +3554,10 @@ end
 function SI:updateRealmMap()
   -- normalize realm name by removing whitespace
   -- local realm = GetRealmName():gsub("%s+","")
-  local normalizedRealm GetNormalizedRealmName()
+  local normalizedRealm = GetNormalizedRealmName();
   
   ---@type string[] already normalized by blizz
-  local connectedRealms = GetAutoCompleteRealms() or {}
+  local connectedRealms = GetAutoCompleteRealms() or {};
 
   local realmMap = SI.db.RealmMap or {}
   SI.db.RealmMap = realmMap
@@ -4462,23 +4477,27 @@ local function DoNothing() end
 
 -----------------------------------------------------------------------------------------------
 
-local function ShowAll()
+local function isShowAllPressed()
   return (IsAltKeyDown() and true) or false
 end
 
-local columnCache = { [true] = {}, [false] = {} }
+-- cache of columns allocated for either; the base state of the tootlip or the ShowAll state. Keyed by `isShowAllPressed()`
+-- inner tables are key by a toon's name and the value is a boolean if its shown for that tooltip state
+---@type table<boolean, table<string, boolean>>
+local columnCache = { [true] = {} , [false] = {} }
+
 local function addColumns(columns, toon, tooltip)
   for c = 1, maxcol do
     columns[toon..c] = columns[toon..c] or tooltip:AddColumn("CENTER")
   end
-  columnCache[ShowAll()][toon] = true
+  columnCache[isShowAllPressed()][toon] = true
 end
 SI.scaleCache = {}
 
 --- The function responsible for generating the addons main tooltip
 ---@param anchor Frame
 function SI:ShowTooltip(anchor)
-  local showall = ShowAll()
+  local showall = isShowAllPressed()
   if Tooltip:IsTooltipShown() and
     SI.showall == showall and
     SI.scale == (SI.scaleCache[showall] or SI.db.Tooltip.Scale)
@@ -4503,7 +4522,9 @@ function SI:ShowTooltip(anchor)
     headText = string.format("%s%s%s",GOLDFONT,"SavedInstances",FONTEND)
   end
   local headLine = tooltip:AddHeader(headText)
+  SI:Debug("Setting mouseover script")
   tooltip:SetCellScript(headLine, 1, "OnEnter", hoverTooltip.ShowAccountSummary )
+
   tooltip:SetCellScript(headLine, 1, "OnLeave", CloseTooltips)
   if SI.isRetail then 
     tooltip:SetCellScript(headLine, 1, "OnMouseDown", OpenWeeklyRewards) 
@@ -4515,7 +4536,7 @@ function SI:ShowTooltip(anchor)
     columnCache[showall][toon] = false
   end
   -- allocating columns for characters
-  for toon, t in cpairs(SI.db.Toons) do
+  for toon, _ in cpairs(SI.db.Toons) do
     if SI.db.Toons[toon].Show == "always" or
       (toon == SI.thisToon and SI.db.Tooltip.SelfAlways) then
       addColumns(columns, toon, tooltip)
@@ -4804,7 +4825,7 @@ function SI:ShowTooltip(anchor)
             holidayinst[instance] = row
           end
           local tstr = SecondsToTime(d.Expires - time(), false, false, 1)
-          tooltip:SetCell(row, columns[toon..1], ClassColorise(t.Class,tstr), nil,"CENTER",maxcol)
+          tooltip:SetCell(row, columns[toon..1], ClassColorise(t.Class,tstr),nil,"CENTER",maxcol)
           tooltip:SetLineScript(row, "OnMouseDown", OpenLFD, info.lfgDungeonID)
         end
       end

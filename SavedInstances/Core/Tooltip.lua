@@ -20,22 +20,18 @@ local function clearIndicatorTip()
   indicatorTip = nil
 end
 
-local headerFont
-local function getHeaderFont()
-  if not headerFont then
-    headerFont = CreateFont('SavedInstancedTooltipHeaderFont')
+--- Setup tooltip default fonts. Might be useful to add an option for this on the settings ui.
+local basePath, baseSize = GameTooltipHeaderText:GetFont()
+baseSize = baseSize * 0.9 -- slightly smaller than default
 
-    local temp = QTip:Acquire('SavedInstancesHeaderTooltip', 1, 'LEFT')
-    local hFont = temp:GetHeaderFont()
-    local hFontPath, hFontSize = hFont:GetFont()
+local headerFont = CreateFont('SavedInstancesHeaderFont')
+headerFont:SetFont(basePath, baseSize, "OUTLINE, THICK, MONO");
 
-    headerFont:SetFont(hFontPath, hFontSize, 'OUTLINE')
-
-    QTip:Release(temp)
-  end
-
-  return headerFont
-end
+local cellFont = CreateFont('SavedInstancesCellFont')
+cellFont:SetFont(basePath, (baseSize * 0.85) , "");
+cellFont:SetShadowOffset(2.5, -1);
+cellFont:SetShadowColor(0.1, 0.1, 0.1, .65);
+--- outline looks better but can change the alpha on it
 
 ---@return QTip tooltip
 function Module:AcquireTooltip()
@@ -44,7 +40,8 @@ function Module:AcquireTooltip()
   end
 
   tooltip = QTip:Acquire('SavedInstancesTooltip', 1, 'LEFT')
-  tooltip:SetHeaderFont(getHeaderFont())
+  tooltip:SetFont(cellFont)
+  tooltip:SetHeaderFont(headerFont)
   tooltip.OnRelease = clearTooltip -- extra-safety: update our variable on auto-release
   return tooltip
 end
@@ -55,6 +52,7 @@ end
 function Module:AcquireIndicatorTip(...)
   ---@class QTip : LibQTip.Tooltip
   indicatorTip = QTip:Acquire('SavedInstancesIndicatorTooltip', ...)
+  -- This is not the best place to instantiate this method. It should be moved out of the AquiereIndicatorTip method.
   indicatorTip.AddQuestDescription = indicatorTip.AddQuestDescription
     or function(questLink)
       SI.ScanTooltip:SetHyperlink(questLink)
@@ -85,7 +83,7 @@ function Module:AcquireIndicatorTip(...)
     end
   indicatorTip.anchorframe = nil
   indicatorTip:Clear()
-  indicatorTip:SetHeaderFont(getHeaderFont())
+  indicatorTip:SetHeaderFont(headerFont)
   indicatorTip:SetScale(SI.db.Tooltip.Scale)
   indicatorTip.OnRelease = clearIndicatorTip -- extra-safety: update our variable on auto-release
 
