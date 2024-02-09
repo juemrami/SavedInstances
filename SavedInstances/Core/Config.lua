@@ -44,23 +44,167 @@ local RED_FONT_COLOR_CODE = RED_FONT_COLOR_CODE
 -- GLOBALS: LibStub, BINDING_NAME_SAVEDINSTANCES, BINDING_HEADER_SAVEDINSTANCES
 local version = 1
 
--- 
-SI.diff_strings = {
-  D1 = DUNGEON_DIFFICULTY1, -- 5 man
-  D2 = DUNGEON_DIFFICULTY2, -- 5 man (Heroic)
-  R0 = EXPANSION_NAME0 .. " " .. LFG_TYPE_RAID,
-  R1 = RAID_DIFFICULTY1, -- "10 man" 
-  R2 = RAID_DIFFICULTY2, -- "25 man"
-  R3 = RAID_DIFFICULTY3, -- "10 man (Heroic)"
-  R4 = RAID_DIFFICULTY4, -- "25 man (Heroic)"
-  -- https://warcraft.wiki.gg/wiki/DifficultyID
-  R5 = GetDifficultyInfo(7), -- "Looking for Raid"
-  R6 = GetDifficultyInfo(14), -- "Normal raid"
-  R7 = GetDifficultyInfo(15), -- "Heroic raid"
-  R8 = GetDifficultyInfo(16), -- "Mythic raid"
-}
+-- Client global strings (localized)
+---@type "%s ($s)"
+local PLAYER_5 = DUNGEON_DIFFICULTY_5PLAYER ---@type "5 Player"
+local PLAYER_10 = RAID_DIFFICULTY_10PLAYER ---@type "10 Player"
+local PLAYER_20 = RAID_DIFFICULTY_20PLAYER ---@type "20 Player"
+local PLAYER_25 = RAID_DIFFICULTY_25PLAYER ---@type "25 Player"
+local PLAYER_40 = RAID_DIFFICULTY_40PLAYER ---@type "40 Player"
+local NORMAL = PLAYER_DIFFICULTY1 ---@type "Normal"
+local RAID_FINDER = PLAYER_DIFFICULTY3 ---@type "Raid Finder"
+local HEROIC = PLAYER_DIFFICULTY2 ---@type "Heroic"
+local MYTHIC = PLAYER_DIFFICULTY6 ---@type "Mythic"
+local MISC = BINDING_HEADER_COMMENTATORMISC ---@type "Misc"
 
-SI.difficultyStrings = SI.diff_strings 
+local SIZE_DIFFICULTY_FORMAT = "%s "..INSTANCE_DIFFICULTY_FORMAT
+
+
+-- for non era clients. wouldnt it make more sense to generate these on the fly? 
+-- use the db2  table to pickout DifficultyID's with unique Name_lang values.
+-- xreference with MapDifficulty to see if theres any dungeons that actually use the difficulty. keep the ones that do.
+
+
+local CATEGORY_STRINGS = {
+  D1 = PLAYER_5,
+  D2 = SIZE_DIFFICULTY_FORMAT:format(PLAYER_5, HEROIC),
+  D3 = SIZE_DIFFICULTY_FORMAT:format(PLAYER_5, MYTHIC),
+  R0 = EXPANSION_NAME0 .. " " .. LFG_TYPE_RAID, -- "Classic Raid" (20/40m)
+  R1 = PLAYER_10, -- "10 man" 
+  R2 = PLAYER_25, -- "25 man"
+  R3 = SIZE_DIFFICULTY_FORMAT:format(PLAYER_10, HEROIC),
+  R4 = SIZE_DIFFICULTY_FORMAT:format(PLAYER_25, HEROIC),
+  --- Flex Raids
+  -- https://warcraft.wiki.gg/wiki/DifficultyID
+  R5 = GetDifficultyInfo(7) or RAID_FINDER, -- "Looking for Raid"/"Raid Finder"
+  R6 = GetDifficultyInfo(14) or NORMAL, -- "Normal"
+  R7 = GetDifficultyInfo(15) or HEROIC, -- "Heroic"
+  R8 = GetDifficultyInfo(16) or MYTHIC, -- "Mythic"
+}
+---@type table<string, string>?
+local DIFFICULTY_CATEGORY_MAP
+if SI.isClassicEra then
+  local categoryRemap = {
+    D1 = PLAYER_5,
+    R0 = PLAYER_10, -- used for SoD
+    R1 = PLAYER_20,
+    R2 = PLAYER_40,
+  }
+  for k, _ in pairs(CATEGORY_STRINGS) do
+    CATEGORY_STRINGS[k] = categoryRemap[k] or nil
+  end
+  -- https://wago.tools/db2/Difficulty?build=1.15.1.53247
+  DIFFICULTY_CATEGORY_MAP = {
+    [1]   = "D1", -- Dungeons
+    [184] = "D1",
+    [201] = "D1", -- (Hardcore daily reset) 
+    [207] = "D1", -- (SoD Solo dungeon req) 
+    [197] = "R0", -- 10m (SoD)
+    [198] = "R0", 
+    [148] = "R1", -- 20m
+    [185] = "R1",
+    [9]   = "R2", -- 40m
+    [186] = "R2",
+  }
+elseif SI.isWrath then
+  local categoryRemap = {
+    D1 = CATEGORY_STRINGS.D1,
+    D2 = CATEGORY_STRINGS.D2,
+    R0 = PLAYER_10,
+    R1 = PLAYER_20, -- Classic 20m
+    R2 = PLAYER_25,
+    R3 = PLAYER_40, -- Classic 40m
+    R4 = CATEGORY_STRINGS.R4, -- 10 Heroic
+    R5 = CATEGORY_STRINGS.R5, -- 25 Heroic
+    -- R6 = RAID_FINDER, -- For cataclysm
+  }
+  for k, _ in pairs(CATEGORY_STRINGS) do
+    CATEGORY_STRINGS[k] = categoryRemap[k] or nil
+  end
+  -- https://wago.tools/db2/Difficulty?build=3.4.3.52237
+  DIFFICULTY_CATEGORY_MAP = {
+    [1]   = "D1", -- Dungeons
+    [173] = "D1",
+    [2]   = "D2", -- Heroic Dung
+    [174] = "D2", 
+    [3]   = "R0", -- 10m
+    [175] = "R0", 
+    [148] = "R1", -- 20m
+    [4]   = "R2", -- 25m
+    [176] = "R2", 
+    [9]   = "R3", -- 40m
+    [5]   = "R4", -- 10m Heroic
+    [193] = "R4", 
+    [6]   = "R5", -- 25m Heroic
+    [194] = "R5",
+  }
+else -- SI.isRetail
+  -- Note: Not all these difficulties generate lockouts in the raidinfo tab.
+  -- https://wago.tools/db2/Difficulty
+  local uniqueDiffs = {
+    1, -- Normal
+    2, -- Heroic
+    3, -- 10 Player
+    4, -- 25 Player
+    5, -- 10 Player (Heroic)
+    6, -- 25 Player (Heroic)
+    7, -- Looking For Raid
+    8, -- Mythic Keystone
+    9, -- 40 Player
+    11, -- Heroic Scenario
+    12, -- Normal Scenario
+    16, -- Mythic
+    18, -- Event
+    20, -- Event Scenario
+    24, -- Timewalking
+    25, -- World PvP Scenario
+    29, -- PvEvP Scenario
+    34, -- PvP
+    152, -- Visions of N'Zoth
+    153, -- Teeming Island
+    167, -- Torghast
+    168, -- Path of Ascension: Courage
+    169, -- Path of Ascension: Loyalty
+    170, -- Path of Ascension: Wisdom
+    171, -- Path of Ascension: Humility
+    172, -- World Boss
+    192, -- Challenge Level 1
+    205, -- Follower
+  }
+  --- These are ID's which share the same display string as the difficultyIDs theyre mapped to.
+  local diffRemap = {
+    [14]  = 1,
+    [38]  = 1,
+    [147] = 1,
+    [150] = 1,
+    [15]  = 2,
+    [39]  = 2,
+    [149] = 2,
+    [17]  = 7,
+    [151] = 7,
+    [23]  = 16,
+    [40]  = 16,
+    [19]  = 18,
+    [30]  = 18,
+    [33]  = 24,
+    [32]  = 25,
+    [45]  = 34,
+  }
+  DIFFICULTY_CATEGORY_MAP = {
+  [1]   = "D1", -- Normal Dungeons
+  [2]   = "D2", -- Heroic Dungeons
+  [3]   = "R1", -- 10m
+  [4]   = "R2", -- 25m
+  [5]   = "R3", -- 10m Heroic
+  [6]   = "R4", -- 25m Heroic
+  [7]   = "R5", -- Looking For Raid
+  [9]   = "R0", -- 40m
+  [14]  = "R6", -- Normal Flex
+  [15]  = "R7", -- Heroic Flex
+  [16]  = "R8", -- Mythic 25m
+  }
+end
+-- CATEGORY_STRINGS.MISC = BINDING_HEADER_COMMENTATORMISC
 
 local FONTEND = FONT_COLOR_CODE_CLOSE
 local GOLDFONT = NORMAL_FONT_COLOR_CODE
@@ -77,24 +221,38 @@ BINDING_HEADER_SAVEDINSTANCES = "SavedInstances"
 -- general helper functions
 
 function SI:idtext(instance,diff,info)
+  if not SI.isRetail then
+    assert(DIFFICULTY_CATEGORY_MAP, "this table is required for non retail builds.")
+    local category = DIFFICULTY_CATEGORY_MAP[diff]
+    local displayStr = CATEGORY_STRINGS[category]
+    if not (category and displayStr) then
+      SI:BugReport(
+        ("No category or display string found for difficulty: %s | category: %s | displayStr: %s")
+          :format(diff, category or "nil", displayStr or "nil")
+      )
+      -- return CATEGORY_STRINGS.MISC
+      return ""
+    end
+    return displayStr
+  end
   if instance.WorldBoss then
     return L["World Boss"]
   elseif info.ID < 0 then
     return "" -- ticket 144: could be RAID_FINDER or FLEX_RAID, but this is already shown in the instance name so it's redundant anyhow
   elseif not instance.Raid then
     if diff == 23 then
-      return SI.diff_strings["D3"]
+      return CATEGORY_STRINGS["D3"]
     else
-      return SI.diff_strings["D"..diff]
+      return CATEGORY_STRINGS["D"..diff]
     end
   elseif instance.Expansion == 0 then -- classic Raid
-    return SI.diff_strings.R0
+    return CATEGORY_STRINGS.R0
   elseif instance.Raid and diff >= 3 and diff <= 7 then -- pre-WoD raids
-    return SI.diff_strings["R"..(diff-2)]
+    return CATEGORY_STRINGS["R"..(diff-2)]
   elseif diff >= 14 and diff <= 16 then -- WoD raids
-    return SI.diff_strings["R"..(diff-8)]
+    return CATEGORY_STRINGS["R"..(diff-8)]
   elseif diff == 17 then -- Looking For Raid
-    return SI.diff_strings.R5
+    return CATEGORY_STRINGS.R5
   else
     return ""
   end
@@ -111,7 +269,7 @@ local function GetIndicatorOptions()
       name = L["You can combine icons and text in a single indicator if you wish. Simply choose an icon, and insert the word ICON into the text field. Anywhere the word ICON is found, the icon you chose will be substituted in."].." "..L["Similarly, the words KILLED and TOTAL will be substituted with the number of bosses killed and total in the lockout."],
     },
   }
-  for category, displayName in pairs(SI.difficultyStrings) do
+  for category, displayName in pairs(CATEGORY_STRINGS) do
     local order = (tonumber(category:match("%d+")) or 0) + 10
     --- Position raid difficulties after dungeon difficulties
     if category:find("^R") then 
@@ -143,7 +301,7 @@ local function GetIndicatorOptions()
           name = COLOR,
           disabled = function() return SI.db.Indicators[category .. "ClassColor"] end,
           get = function(info)
-            local color = SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]]
+            local color = SI.db.Indicators[info[#info]] or SI.defaultDB.Indicators[info[#info]] or CreateColor(1, 1, 1, 1)
             local r = color[1]
             local g = color[2]
             local b = color[3]
@@ -982,7 +1140,7 @@ function Config:BuildAceConfigOptions()
     if SI.isClassicEra then
       icon = GetItemIcon(currencyID)
       name = GetItemInfo(currencyID) or ("Item: "..currencyID)
-      SI:Debug("Currency: %s, %s", name or "nil", icon or 'nil')
+      -- SI:Debug("Currency: %s, %s", name or "nil", icon or 'nil')w
     else
       local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
       name = Currency.OverrideName[currencyID] or data.name

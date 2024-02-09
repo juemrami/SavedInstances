@@ -47,8 +47,9 @@ local MAX_DIFFICULTY_ID = (SI.isRetail and 205)
 -- highest possible value for an instanceID, 
 -- retail client:  2530 = "Dawn of the Infinite: Murozond's Rise"
 -- wotlk client: 2497 = "The Oculus"
--- classic client: 131 = "Winterspring"
-local MAX_LFG_DUNGEON_ID = (SI.isClassicEra and 131)
+-- classic client: 131 = "Winterspring", 
+-- Classic db table is missing AQ20/40 which are 160 and 161,
+local MAX_LFG_DUNGEON_ID = (SI.isClassicEra and 161)
   or (SI.isWrath and 2497) 
   or 2530; -- assume retail 
 
@@ -946,17 +947,17 @@ function SI:FindInstance(name, isRaid)
   -- IF that matched /raidinfo entry has a corresponding entry in the `SI.transInstance` table
   -- then returns the localized name and *translated* lfgDungeonID.
   for i = 1, GetNumSavedInstances() do
-    local link = GetSavedInstanceChatLink(i) or  ""
-    local idFromLink, nameFromLink = link:match(":(%d+):%d+:%d+\124h%[(.+)%]\124h")
-    idFromLink = idFromLink and tonumber(idFromLink)
-    local normalizedLinkName = nameFromLink and SI:normalizeName(nameFromLink)
-    local normalizedID = idFromLink and SI.transInstance[idFromLink]
-    if normalizedID and normalizedLinkName == normalizedName then
-      local instanceKey = SI:UpsertInstanceByDungeonID(normalizedID)
-      if instanceKey then
-        return instanceKey, normalizedID
+      local link = GetSavedInstanceChatLink(i) or ""
+      local idFromLink, nameFromLink = link:match(":(%d+):%d+:%d+\124h%[(.+)%]\124h")
+      idFromLink = idFromLink and tonumber(idFromLink)
+      local normalizedLinkName = nameFromLink and SI:normalizeName(nameFromLink)
+      local normalizedID = idFromLink and SI.transInstance[idFromLink]
+      if normalizedID and (normalizedLinkName == normalizedName) then
+        local instanceKey = SI:UpsertInstanceByDungeonID(normalizedID)
+        if instanceKey then
+          return instanceKey, normalizedID
+        end
       end
-    end
   end
   -- normalized substring match for any instances in saved vars.
   for instanceKey, instanceInfo in pairs(SI.db.Instances) do
@@ -1150,10 +1151,10 @@ local getLocalizedExceptionData = function(dungeonID)
   if not exceptionData[dungeonID] then return nil end
   local cacheData = cachedLocalizations[dungeonID]
   if not cacheData or cacheData.isPartial then -- not cached yet
-    SI:Debug("Scanning tooltip for Boss name info for dungeonID:%s")
     cacheData = {}
     local encounters = exceptionData[dungeonID]
     if type(encounters) == "table" then
+      SI:Debug("Scanning tooltip for Boss name info for dungeonID:%i", dungeonID)
       for idx, npcID in ipairs(encounters) do
         -- localize boss names
         SI.ScanTooltip:SetHyperlink(("unit:Creature-0-0-0-0-%d-0000000000"):format(npcID))
@@ -1463,11 +1464,12 @@ function SI:UpdateInstanceData()
     end
   end
 
+
   --- Update the world boss data
   for encounterID, boss in pairs(SI.WorldBosses) do
 
     ---@type string
-    local bossName = select(2,EJ_GetCreatureInfo(1,encounterID)) 
+    local bossName = select(2,EJ_GetCreatureInfo(1, encounterID)) 
       or ("UNKNOWN"..encounterID) 
 
     -- debug related check 
@@ -1615,13 +1617,22 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
 
   -- The name of the dungeon/event
   local lfgName = dungeonInfo[1] ---@type string? 
-  -- 1=TYPEID_DUNGEON or LFR, 2=raid instance, 4=outdoor area, 6=TYPEID_RANDOM_DUNGEON
+  -- 1=TYPEID_DUNGEON or LFR, 2=raid instance, 4=outdoor area, 6=TYPEID_RANDOM_DUNGEON, 5 = bg
   local typeID = dungeonInfo[2] ---@type number
-
+  
   -- 0=Unknown, 1=LFG_SUBTYPEID_DUNGEON, 2=LFG_SUBTYPEID_HEROIC, 3=LFG_SUBTYPEID_RAID,
   -- 4=LFG_SUBTYPEID_SCENARIO, 5=LFG_SUBTYPEID_FLEXRAID
   local subtypeID = dungeonInfo[3] ---@type number 
-
+  local hasValidTypeID = function()
+    local validTypes
+    if SI.isClassicEra then
+      validTypes = {1, 2}
+    else
+      validTypes = {1, 2, 6}
+    end
+    return tContains(validTypes, typeID)
+  end
+  
   -- Recommended level to queue for this dungeon
   local recLevel = dungeonInfo[6] ---@type number?
   if not recLevel or recLevel == 0 then
@@ -1639,15 +1650,8 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
  
   -- maxPlayers = tonumber(maxPlayers) already assumed to be a `number|nil`
   
-  -- if missing required fields
-  if not (lfgName and expansionLevel and recLevel) 
-    -- or instance not a dungeon/lfr/random-dungeon (typeID = 1/2/6)
-    or (typeID > 2 and typeID ~= TYPEID_RANDOM_DUNGEON)
-  then return end -- then invalid dunegon. ignore it.
-
   -- if instance 10v10 rated bg then ignore it. return `isBlackListed=true`
-  if lfgName:find(PVP_RATED_BATTLEGROUND) then return nil, nil, true end 
-  
+
   -- Edge cases handled below.
   if dungeonID == 1347 then -- ticket 237: Return to Karazhan currently has no actual LFDID, so use this one (Kara Scenario)
     lfgName = SPLASH_LEGION_NEW_7_1_RIGHT_TITLE
@@ -1673,6 +1677,26 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
     if SI.locale == 'deDE' then
       lfgName = "Niedergang"
     end
+  elseif dungeonID == 160 and not lfgName then 
+    -- Ruins of Ahn'Qiraj
+    lfgName = GetRealZoneText(509)
+    expansionLevel = 0
+    recLevel = 60
+    maxPlayers = 20
+    isHoliday = false
+    difficultyID = 148 -- 20m
+    typeID = 2
+    subtypeID = LFG_SUBTYPEID_RAID
+  elseif dungeonID == 161 and not lfgName then 
+    -- Temple of Ahn'Qiraj
+    lfgName = GetRealZoneText(531)
+    expansionLevel = 0
+    recLevel = 60
+    maxPlayers = 40
+    isHoliday = false
+    difficultyID = 9 -- 40m
+    typeID = 2
+    subtypeID = LFG_SUBTYPEID_RAID
   end
   if subtypeID == LFG_SUBTYPEID_SCENARIO and typeID ~= TYPEID_RANDOM_DUNGEON then -- ignore non-random scenarios
     return nil, nil, true
@@ -1686,6 +1710,15 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
     return nil, nil, true -- ignore old Flex entries
   end
 
+  -- missing required fields
+  if not (lfgName and expansionLevel and recLevel) 
+    -- or instance not a dungeon/raid/random-dungeon 
+  or not hasValidTypeID()
+  then 
+    -- SI:Debug("invalid dungeon name %s | expansion %d | level %d| valid %s . Skipping!", lfgName or 'nil', expansionLevel or -1, recLevel or -1, tostring(hasValidTypeID()))
+    return 
+  end -- then invalid dunegon. ignore it.
+  if lfgName:find(PVP_RATED_BATTLEGROUND) then return nil, nil, true end 
   -- ensure uniqueness (eg TeS LFR)
   if SI.LFRInstances[dungeonID] then 
     local lfrDungeonID =  SI.db.Instances[lfgName] and SI.db.Instances[lfgName].lfgDungeonID
@@ -1714,7 +1747,7 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
   end
 
   ---@type SavedInstances.DB.Instance.Entry
-  local newInfo = {
+  local instanceInfo = {
     LFDID = dungeonID,
     lfgDungeonID = dungeonID,
     Show = "saved",
@@ -1729,23 +1762,18 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
   }
   local isNewInstance = not SI.db.Instances[lfgName]
   if isNewInstance then
-    SI:Debug("UpdateInstance: "..dungeonID..
-      " | "..(lfgName or "nil")..
-      " | "..(expansionLevel or "nil")..
-      " | "..(recLevel or "nil")..
-      " | "..(maxPlayers or "nil")
-    )
-    SI.db.Instances[lfgName] = newInfo
+    SI:Debug("New Instance Inserted to DB: %s | expansion %s | recLevel %s", lfgName, expansionLevel, recLevel)
+    SI.db.Instances[lfgName] = instanceInfo
   end
 
   -- the following code seems like it should be in the db compatability. Kept it coz unsure if its needed.
   -- Recomended levels for instances stored in saved variables should only be updated when there are level squishes or the dungeonID is changed.
   local savedInfo = SI.db.Instances[lfgName] 
   if not savedInfo.RecLevel or savedInfo.RecLevel < 1 then savedInfo.RecLevel = recLevel end
-  if recLevel > 0 and recLevel < savedInfo.RecLevel then savedInfo.RecLevel = recLevel end -- favor non-heroic RecLevel
+  if recLevel > 0 and recLevel < savedInfo.RecLevel then savedInfo.RecLevel = recLevel end -- favor non-heroic RecLevel (why do we care about rec level? for sorting the instances based on reccomended level)
   
   --upsert fields
-  for field, value in pairs(newInfo) do
+  for field, value in pairs(instanceInfo) do
     if type(value) ~= nil 
       and (not savedInfo[field] or type(savedInfo[field] ~= type(value))) 
     then
@@ -2027,6 +2055,8 @@ function SI:UpdateToonData()
       if not toonData.WeeklyResetTime or (toonData.WeeklyResetTime < currentTimestamp ) then
         -- toonData.currency = toonData.currency or {} -- defined on init
         for _, currencyID in ipairs(SI.validCurrencies) do
+          assert(toonData, "toonData.currency is nil")
+          assert(toonData.currency, "toonData.currency is nil")
           local currency = toonData.currency[currencyID]
           if currency and currency.earnedThisWeek then
             currency.earnedThisWeek = 0
@@ -3263,9 +3293,16 @@ function SI:toonInit()
 
   local toonData = SI.db.Toons[SI.thisToon] or {}
   local isNewToon = toonData.Level == nil
+  local defaultData = getNewToonDefault()
   if isNewToon then
-    SI.db.Toons[SI.thisToon] = getNewToonDefault()
+    SI.db.Toons[SI.thisToon] = defaultData
     toonData = SI.db.Toons[SI.thisToon]
+  else
+    for k,v in pairs(defaultData) do
+      if toonData[k] == nil then
+        toonData[k] = v
+      end
+    end
   end
 
   -- I feel like old keys should be removed in a more programmatic way in the DB migrations of `SI:OnInitialize`
@@ -4595,7 +4632,7 @@ function SI:ShowTooltip(anchor)
                 categoryshown[category] = true
 
                 SI:Debug("Lockouts Found: %s - %s | expires in: %s " ,
-                toon, instanceEntry[toon][diffID].Link,
+                toon, instanceEntry[toon][diffID].Link or "no link",
                 SecondsToTime(instanceEntry[toon][diffID].Expires - time())
               )
 

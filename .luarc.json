@@ -300,7 +300,19 @@
         "IN_PROGRESS",
         "LinkUtil",
         "RaidFrame",
-        "GameTooltipHeaderText"
+        "GameTooltipHeaderText",
+        "DUNGEON_DIFFICULTY_5PLAYER",
+        "INSTANCE_DIFFICULTY_FORMAT",
+        "PLAYER_DIFFICULTY6",
+        "DUNGEON_DIFFICULTY_5PLAYER_HEROIC",
+        "PLAYER_DIFFICULTY2",
+        "RAID_DIFFICULTY_10PLAYER",
+        "RAID_DIFFICULTY_20PLAYER",
+        "RAID_DIFFICULTY_25PLAYER",
+        "RAID_DIFFICULTY_40PLAYER",
+        "PLAYER_DIFFICULTY1",
+        "PLAYER_DIFFICULTY3",
+        "BINDING_HEADER_COMMENTATORMISC"
     ],
     "diagnostics.disable": [
         "deprecated",
