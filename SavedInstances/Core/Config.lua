@@ -44,6 +44,10 @@ local RED_FONT_COLOR_CODE = RED_FONT_COLOR_CODE
 -- GLOBALS: LibStub, BINDING_NAME_SAVEDINSTANCES, BINDING_HEADER_SAVEDINSTANCES
 local version = 1
 
+-- All this is used for is generating the difficulty string shown on the hovertooltip for an character lockout
+
+-- which should only be required for clients that dont have access to `GetDifficultyInfo` which atm is just classic era.
+
 -- Client global strings (localized)
 ---@type "%s ($s)"
 local PLAYER_5 = DUNGEON_DIFFICULTY_5PLAYER ---@type "5 Player"
@@ -59,13 +63,7 @@ local MISC = BINDING_HEADER_COMMENTATORMISC ---@type "Misc"
 
 local SIZE_DIFFICULTY_FORMAT = "%s "..INSTANCE_DIFFICULTY_FORMAT
 
-
--- for non era clients. wouldnt it make more sense to generate these on the fly? 
--- use the db2  table to pickout DifficultyID's with unique Name_lang values.
--- xreference with MapDifficulty to see if theres any dungeons that actually use the difficulty. keep the ones that do.
-
-
-local CATEGORY_STRINGS = {
+local DIFFICULTY_STRINGS = {
   D1 = PLAYER_5,
   D2 = SIZE_DIFFICULTY_FORMAT:format(PLAYER_5, HEROIC),
   D3 = SIZE_DIFFICULTY_FORMAT:format(PLAYER_5, MYTHIC),
@@ -80,47 +78,50 @@ local CATEGORY_STRINGS = {
   R6 = GetDifficultyInfo(14) or NORMAL, -- "Normal"
   R7 = GetDifficultyInfo(15) or HEROIC, -- "Heroic"
   R8 = GetDifficultyInfo(16) or MYTHIC, -- "Mythic"
+  H = CALENDAR_FILTER_HOLIDAYS or nil, -- "Holidays"
 }
 ---@type table<string, string>?
 local DIFFICULTY_CATEGORY_MAP
 if SI.isClassicEra then
-  local categoryRemap = {
+  local categories = {
     D1 = PLAYER_5,
     R0 = PLAYER_10, -- used for SoD
     R1 = PLAYER_20,
     R2 = PLAYER_40,
   }
-  for k, _ in pairs(CATEGORY_STRINGS) do
-    CATEGORY_STRINGS[k] = categoryRemap[k] or nil
-  end
   -- https://wago.tools/db2/Difficulty?build=1.15.1.53247
   DIFFICULTY_CATEGORY_MAP = {
     [1]   = "D1", -- Dungeons
-    [184] = "D1",
-    [201] = "D1", -- (Hardcore daily reset) 
-    [207] = "D1", -- (SoD Solo dungeon req) 
     [197] = "R0", -- 10m (SoD)
-    [198] = "R0", 
     [148] = "R1", -- 20m
-    [185] = "R1",
     [9]   = "R2", -- 40m
-    [186] = "R2",
   }
+  local diffRemap = {
+    [184] = 1, -- SoM dungeons
+    [201] = 1, -- Hardcore (daily reset)
+    [207] = 1, -- SoD rune solo dungeons
+    [198] = 197,
+    [185] = 148, -- SoM 20m
+    [186] = 9, -- SoM 40m
+  }
+  for k, _ in pairs(DIFFICULTY_STRINGS) do
+    DIFFICULTY_STRINGS[k] = categories[k] or nil
+  end
+  for k1, k2 in pairs(diffRemap) do
+    DIFFICULTY_CATEGORY_MAP[k1] = DIFFICULTY_CATEGORY_MAP[k2]
+  end
 elseif SI.isWrath then
   local categoryRemap = {
-    D1 = CATEGORY_STRINGS.D1,
-    D2 = CATEGORY_STRINGS.D2,
+    D1 = DIFFICULTY_STRINGS.D1,
+    D2 = DIFFICULTY_STRINGS.D2,
     R0 = PLAYER_10,
     R1 = PLAYER_20, -- Classic 20m
     R2 = PLAYER_25,
     R3 = PLAYER_40, -- Classic 40m
-    R4 = CATEGORY_STRINGS.R4, -- 10 Heroic
-    R5 = CATEGORY_STRINGS.R5, -- 25 Heroic
+    R4 = DIFFICULTY_STRINGS.R4, -- 10 Heroic
+    R5 = DIFFICULTY_STRINGS.R5, -- 25 Heroic
     -- R6 = RAID_FINDER, -- For cataclysm
   }
-  for k, _ in pairs(CATEGORY_STRINGS) do
-    CATEGORY_STRINGS[k] = categoryRemap[k] or nil
-  end
   -- https://wago.tools/db2/Difficulty?build=3.4.3.52237
   DIFFICULTY_CATEGORY_MAP = {
     [1]   = "D1", -- Dungeons
@@ -138,58 +139,62 @@ elseif SI.isWrath then
     [6]   = "R5", -- 25m Heroic
     [194] = "R5",
   }
+  for k, _ in pairs(DIFFICULTY_STRINGS) do
+    DIFFICULTY_STRINGS[k] = categoryRemap[k] or nil
+  end
 else -- SI.isRetail
   -- Note: Not all these difficulties generate lockouts in the raidinfo tab.
   -- https://wago.tools/db2/Difficulty
   local uniqueDiffs = {
-    1, -- Normal
-    2, -- Heroic
-    3, -- 10 Player
-    4, -- 25 Player
-    5, -- 10 Player (Heroic)
-    6, -- 25 Player (Heroic)
-    7, -- Looking For Raid
-    8, -- Mythic Keystone
-    9, -- 40 Player
-    11, -- Heroic Scenario
-    12, -- Normal Scenario
-    16, -- Mythic
-    18, -- Event
-    20, -- Event Scenario
-    24, -- Timewalking
-    25, -- World PvP Scenario
-    29, -- PvEvP Scenario
-    34, -- PvP
-    152, -- Visions of N'Zoth
-    153, -- Teeming Island
-    167, -- Torghast
-    168, -- Path of Ascension: Courage
-    169, -- Path of Ascension: Loyalty
-    170, -- Path of Ascension: Wisdom
-    171, -- Path of Ascension: Humility
-    172, -- World Boss
-    192, -- Challenge Level 1
-    205, -- Follower
+    1,    -- Normal   | typeID: 1
+    14,   -- Normal   | typeID: 2
+    2,    -- Heroic   | typeID: 1
+    15,   -- Heroic   | typeID: 2
+    23,   -- Mythic   | typeID: 1
+    16,   -- Mythic   | typeID: 2
+    3,    -- 10 Player  | typeID: 2
+    5,    -- 10 Player (Heroic)   | typeID: 2
+    4,    -- 25 Player  | typeID: 2
+    6,    -- 25 Player (Heroic)   | typeID: 2
+    9,    -- 40 Player  | typeID: 2
+    192,  -- Challenge Level 1  | typeID: 0
+    19,   -- Event  | typeID: 1
+    18,   -- Event  | typeID: 2
+    20,   -- Event Scenario   | typeID: 1
+    205,  -- Follower   | typeID: 1
+    11,   -- Heroic Scenario  | typeID: 1
+    7,    -- Looking For Raid   | typeID: 2
+    8,    -- Mythic Keystone  | typeID: 1
+    12,   -- Normal Scenario  | typeID: 1
+    168,  -- Path of Ascension: Courage   | typeID: 1
+    171,  -- Path of Ascension: Humility  | typeID: 1
+    169,  -- Path of Ascension: Loyalty   | typeID: 1
+    170,  -- Path of Ascension: Wisdom  | typeID: 1
+    29,   -- PvEvP Scenario   | typeID: 3
+    45,   -- PvP  | typeID: 1
+    34,   -- PvP  | typeID: 3
+    153,  -- Teeming Island   | typeID: 1
+    24,   -- Timewalking  | typeID: 1
+    33,   -- Timewalking  | typeID: 2
+    167,  -- Torghast   | typeID: 1
+    152,  -- Visions of N'Zoth  | typeID: 1
+    172,  -- World Boss   | typeID: 0
+    25,   -- World PvP Scenario   | typeID: 1
   }
-  --- These are ID's which share the same display string as the difficultyIDs theyre mapped to.
+  -- these difficulties share names with the ones theyre mapped to
   local diffRemap = {
-    [14]  = 1,
     [38]  = 1,
     [147] = 1,
     [150] = 1,
-    [15]  = 2,
     [39]  = 2,
     [149] = 2,
     [17]  = 7,
     [151] = 7,
-    [23]  = 16,
-    [40]  = 16,
-    [19]  = 18,
-    [30]  = 18,
-    [33]  = 24,
+    [30]  = 19,
+    [40]  = 23,
     [32]  = 25,
-    [45]  = 34,
-  }
+   }
+  --- These are ID's which share the same display string as the difficultyIDs theyre mapped to.
   DIFFICULTY_CATEGORY_MAP = {
   [1]   = "D1", -- Normal Dungeons
   [2]   = "D2", -- Heroic Dungeons
@@ -202,6 +207,7 @@ else -- SI.isRetail
   [14]  = "R6", -- Normal Flex
   [15]  = "R7", -- Heroic Flex
   [16]  = "R8", -- Mythic 25m
+  [23]  = "D3", -- Mythic Dungeons 
   }
 end
 -- CATEGORY_STRINGS.MISC = BINDING_HEADER_COMMENTATORMISC
@@ -220,11 +226,11 @@ BINDING_HEADER_SAVEDINSTANCES = "SavedInstances"
 
 -- general helper functions
 
-function SI:idtext(instance,diff,info)
+function SI:GetDifficultyName(instance,diff,info)
   if not SI.isRetail then
     assert(DIFFICULTY_CATEGORY_MAP, "this table is required for non retail builds.")
     local category = DIFFICULTY_CATEGORY_MAP[diff]
-    local displayStr = CATEGORY_STRINGS[category]
+    local displayStr = DIFFICULTY_STRINGS[category]
     if not (category and displayStr) then
       SI:BugReport(
         ("No category or display string found for difficulty: %s | category: %s | displayStr: %s")
@@ -241,23 +247,31 @@ function SI:idtext(instance,diff,info)
     return "" -- ticket 144: could be RAID_FINDER or FLEX_RAID, but this is already shown in the instance name so it's redundant anyhow
   elseif not instance.Raid then
     if diff == 23 then
-      return CATEGORY_STRINGS["D3"]
+      return DIFFICULTY_STRINGS["D3"]
     else
-      return CATEGORY_STRINGS["D"..diff]
+      return DIFFICULTY_STRINGS["D"..diff]
     end
   elseif instance.Expansion == 0 then -- classic Raid
-    return CATEGORY_STRINGS.R0
+    return DIFFICULTY_STRINGS.R0
   elseif instance.Raid and diff >= 3 and diff <= 7 then -- pre-WoD raids
-    return CATEGORY_STRINGS["R"..(diff-2)]
+    return DIFFICULTY_STRINGS["R"..(diff-2)]
   elseif diff >= 14 and diff <= 16 then -- WoD raids
-    return CATEGORY_STRINGS["R"..(diff-8)]
+    return DIFFICULTY_STRINGS["R"..(diff-8)]
   elseif diff == 17 then -- Looking For Raid
-    return CATEGORY_STRINGS.R5
+    return DIFFICULTY_STRINGS.R5
   else
     return ""
   end
 end
 
+---@param difficultyID integer
+function SI.getDifficultyCategory(difficultyID)
+  if not SI.isRetail then
+    assert(DIFFICULTY_CATEGORY_MAP, "this table is required for non retail builds.")
+    -- return D1 as a fallback
+    return DIFFICULTY_CATEGORY_MAP[difficultyID] or "D1"
+  end
+end
 --- Builds and returns the options table for the "Indicators" sub-section SavedInstances options.
 ---@return table<string, AceConfig.OptionsTable> args A table of valid AceConfig `args` for the option table.
 local function GetIndicatorOptions()
@@ -269,7 +283,7 @@ local function GetIndicatorOptions()
       name = L["You can combine icons and text in a single indicator if you wish. Simply choose an icon, and insert the word ICON into the text field. Anywhere the word ICON is found, the icon you chose will be substituted in."].." "..L["Similarly, the words KILLED and TOTAL will be substituted with the number of bosses killed and total in the lockout."],
     },
   }
-  for category, displayName in pairs(CATEGORY_STRINGS) do
+  for category, displayName in pairs(DIFFICULTY_STRINGS) do
     local order = (tonumber(category:match("%d+")) or 0) + 10
     --- Position raid difficulties after dungeon difficulties
     if category:find("^R") then 

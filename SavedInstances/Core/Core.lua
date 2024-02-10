@@ -1017,8 +1017,10 @@ function SI:LookupInstance(dungeonID, instanceName, isRaid)
   return instanceKey, entry
 end
 
+-- in this case a "category" is a string of the form "R{n}"|"D{n}"|"H"|"N" where n is the expansion number for that instance 0/1/2/3/4...n
 ---@param instance string?
-function SI:InstanceCategory(instance)
+---@return string
+function SI:GetInstanceCategory(instance)
   if not instance then return nil end
   local entry = SI.db.Instances[instance]
   if entry.Holiday then return "H" end
@@ -1026,13 +1028,16 @@ function SI:InstanceCategory(instance)
   return ((entry.Raid and "R") or ((not entry.Raid) and "D")) .. entry.Expansion
 end
 
-function SI:InstancesInCategory(targetcategory)
+--- Returns a list of instance keys that belong to the same category (as returned by `GetInstanceCategory`)
+---@param targetCategory string
+---@return string[]
+function SI:GetCategoryInstances(targetCategory)
   -- returns a table of the form { "instance1", "instance2", ... }
-  if (not targetcategory) then return { } end
+  if (not targetCategory) then return { } end
   local list = { }
-  for instance, _ in pairs(SI.db.Instances) do
-    if SI:InstanceCategory(instance) == targetcategory then
-      table.insert(list, instance)
+  for instanceKey, _ in pairs(SI.db.Instances) do
+    if SI:GetInstanceCategory(instanceKey) == targetCategory then
+      table.insert(list, instanceKey)
     end
   end
   return list
@@ -1042,7 +1047,7 @@ function SI:CategorySize(category)
   if not category then return nil end
   local i = 0
   for instance, _ in pairs(SI.db.Instances) do
-    if category == SI:InstanceCategory(instance) then
+    if category == SI:GetInstanceCategory(instance) then
       i = i + 1
     end
   end
@@ -1286,7 +1291,7 @@ SI.oi_cache = {} ---@type string[][]
 function SI:OrderedInstances(category)
   local instances = SI.oi_cache[category]
   if not instances then
-    instances = SI:InstancesInCategory(category)
+    instances = SI:GetCategoryInstances(category)
     table.sort(instances, instanceSort)
     if SI.instancesUpdated then
       SI.oi_cache[category] = instances
@@ -1346,7 +1351,10 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
     category = "D1"
   else
     local instance = SI.db.Instances[instanceKey]
-    if not instance or not instance.Raid then -- 5-man
+    if not SI.isRetail then
+      assert(diffID, "DifficultyID is required to generate a `DifficultyString` for non retail client.")
+      category = SI.getDifficultyCategory(diffID)
+    elseif not instance or not instance.Raid then -- 5-man
       if diffID == 2 then -- heroic
         category = "D2"
     elseif diffID == 23 then -- mythic
@@ -1617,21 +1625,27 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
 
   -- The name of the dungeon/event
   local lfgName = dungeonInfo[1] ---@type string? 
-  -- 1=TYPEID_DUNGEON or LFR, 2=raid instance, 4=outdoor area, 6=TYPEID_RANDOM_DUNGEON, 5 = bg
-  local typeID = dungeonInfo[2] ---@type number
   
-  -- 0=Unknown, 1=LFG_SUBTYPEID_DUNGEON, 2=LFG_SUBTYPEID_HEROIC, 3=LFG_SUBTYPEID_RAID,
-  -- 4=LFG_SUBTYPEID_SCENARIO, 5=LFG_SUBTYPEID_FLEXRAID
-  local subtypeID = dungeonInfo[3] ---@type number 
+  local typeID = dungeonInfo[2] ---@type number
+  -- See 'InstanceType'
+  -- https://wago.tools/db2/Difficulty?build=10.2.5.53262&page=1&sort[InstanceType]=asc
+  -- 1=TYPEID_DUNGEON or LFR, 2=raid instance, 4=outdoor area, 6=TYPEID_RANDOM_DUNGEON, 5 = bg
+  -- it looks like 6 is no longer used tho.
   local hasValidTypeID = function()
     local validTypes
     if SI.isClassicEra then
+      -- dungeon and raid
       validTypes = {1, 2}
     else
+
       validTypes = {1, 2, 6}
     end
     return tContains(validTypes, typeID)
   end
+  
+  -- 0=Unknown, 1=LFG_SUBTYPEID_DUNGEON, 2=LFG_SUBTYPEID_HEROIC, 3=LFG_SUBTYPEID_RAID,
+  -- 4=LFG_SUBTYPEID_SCENARIO, 5=LFG_SUBTYPEID_FLEXRAID
+  local subtypeID = dungeonInfo[3] ---@type number 
   
   -- Recommended level to queue for this dungeon
   local recLevel = dungeonInfo[6] ---@type number?
@@ -2901,7 +2915,7 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
   local toonline = indicatorTip:AddHeader()
   local toonstr = (SI.db.Tooltip.ShowServer and toon) or strsplit(' ', toon)
   indicatorTip:SetCell(toonline, 1, ClassColorise(SI.db.Toons[toon].Class, toonstr), indicatorTip:GetHeaderFont(), "LEFT", 1)
-  indicatorTip:SetCell(toonline, 2, SI:idtext(instance,difficultyID,lockoutInfo),nil, "RIGHT", 2)
+  indicatorTip:SetCell(toonline, 2, SI:GetDifficultyName(instance,difficultyID,lockoutInfo),nil, "RIGHT", 2)
   local EMPH = " !!! "
   if lockoutInfo.Extended then
     indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITEFONT .. EMPH .. L["Extended Lockout - Not yet saved"] .. EMPH .. FONTEND,nil,"CENTER",3)
