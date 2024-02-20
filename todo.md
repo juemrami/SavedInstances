@@ -1,15 +1,7 @@
 # Todo
 
-- [ ] Hide and disable unused AceConfig option widgets for classic and wrath
-    
-    - [ ] General Settings
-    
-    - [x] Indicators
-
 - [ ] Add option to ignore characters on servers with a different season (ie dont show SoD characters while on an SoM or Hardcore character unless toggled)
 
-- [x] Compare retail functionality between this addon and the original
-    - From a quick usage of the addon on retail all seems to be working but its hard to test every feature. (and unit testing feels like too much to implement for an addon)
 
 - [ ] Move all the logic relating to tracking instance lockouts out of `Core.lua` and into its own module file. 
 
@@ -33,3 +25,12 @@
 - [ ] World buff tracking for classic.
 
 - [ ] Modify modules to be able to loaded on any client but only functional on the client they are intended for. (ie indexing any function/member on say `Callings` or `Warfront` modules while not SI.isRetail should return nil but still be indexable)
+
+- [x] Hide and disable unused AceConfig option widgets for classic and wrath
+    
+    - [x] General Settings: Holidays, random dungeons, and world bosses.
+    
+    - [x] Indicators
+    
+- [x] Compare retail functionality between this addon and the original
+    - From a quick usage of the addon on retail all seems to be working but its hard to test every feature. (and unit testing feels like too much to implement for an addon)

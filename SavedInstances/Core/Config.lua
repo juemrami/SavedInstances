@@ -78,7 +78,7 @@ local DIFFICULTY_STRINGS = {
   R6 = GetDifficultyInfo(14) or NORMAL, -- "Normal"
   R7 = GetDifficultyInfo(15) or HEROIC, -- "Heroic"
   R8 = GetDifficultyInfo(16) or MYTHIC, -- "Mythic"
-  H = CALENDAR_FILTER_HOLIDAYS or nil, -- "Holidays"
+  -- H = CALENDAR_FILTER_HOLIDAYS or nil, -- "Holidays"
 }
 ---@type table<string, string>?
 local DIFFICULTY_CATEGORY_MAP
@@ -209,6 +209,9 @@ else -- SI.isRetail
   [16]  = "R8", -- Mythic 25m
   [23]  = "D3", -- Mythic Dungeons 
   }
+  for new, original in pairs(diffRemap) do
+    DIFFICULTY_CATEGORY_MAP[new] = DIFFICULTY_CATEGORY_MAP[original]
+  end
 end
 -- CATEGORY_STRINGS.MISC = BINDING_HEADER_COMMENTATORMISC
 
@@ -266,11 +269,9 @@ end
 
 ---@param difficultyID integer
 function SI.getDifficultyCategory(difficultyID)
-  if not SI.isRetail then
-    assert(DIFFICULTY_CATEGORY_MAP, "this table is required for non retail builds.")
-    -- return D1 as a fallback
-    return DIFFICULTY_CATEGORY_MAP[difficultyID] or "D1"
-  end
+  assert(DIFFICULTY_CATEGORY_MAP, "table is required for function.")
+  -- return D1 as a fallback
+  return DIFFICULTY_CATEGORY_MAP[difficultyID] or "D1"
 end
 --- Builds and returns the options table for the "Indicators" sub-section SavedInstances options.
 ---@return table<string, AceConfig.OptionsTable> args A table of valid AceConfig `args` for the option table.
@@ -575,18 +576,24 @@ function Config:BuildAceConfigOptions()
             type = "toggle",
             name = L["Show Holiday"],
             desc = L["Show holiday boss rewards"],
+            disabled = SI.isClassicEra,
+            hidden = SI.isClassicEra,
             order = 23.65,
           },
           ShowRandom = {
             type = "toggle",
             name = L["Show Random"],
             desc = L["Show random dungeon bonus reward"],
+            disabled = SI.isClassicEra,
+            hidden = SI.isClassicEra,
             order = 23.75,
           },
           CombineWorldBosses = {
             type = "toggle",
             name = L["Combine World Bosses"],
             desc = L["Combine World Bosses"],
+            disabled = not SI.isRetail,
+            hidden = not SI.isRetail,
             order = 23.85,
           },
           CombineLFR = {

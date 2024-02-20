@@ -1017,9 +1017,9 @@ function SI:LookupInstance(dungeonID, instanceName, isRaid)
   return instanceKey, entry
 end
 
--- in this case a "category" is a string of the form "R{n}"|"D{n}"|"H"|"N" where n is the expansion number for that instance 0/1/2/3/4...n
+-- in this case a "category" is a string of the form "R{n}"|"D{n}"|"H"|"N" where n is the expansion number for that instance (0/1/2/.../n)
 ---@param instance string?
----@return string
+---@return string?
 function SI:GetInstanceCategory(instance)
   if not instance then return nil end
   local entry = SI.db.Instances[instance]
@@ -1303,37 +1303,45 @@ end
 --- Returns a table in of the form `{ "category1", "category2", ... }` containing instance categories for valid expansions. Uses the table `SI.oc_cache` as a cache.
 --- @return string[] 
 function SI:OrderedCategories()
-  if SI.oc_cache then return SI.oc_cache end
+  -- if oc_cache is create with EXPANSION and then this is changed to "TYPE" wont get get oc_cache for the wrong list if we dont invalidate the cache?
+  
+  -- if SI.oc_cache then return SI.oc_cache end
   local orderedlist = { }
-  local firstexpansion, lastexpansion, expansionstep, firsttype, lasttype
+
+  local xpacStart, xpacEnd, step;
   if SI.db.Tooltip.NewFirst then
-    firstexpansion = MAX_EXPANSION
-    lastexpansion = 0
-    expansionstep = -1
+    xpacStart = MAX_EXPANSION
+    xpacEnd = 0
+    step = -1
   else
-    firstexpansion = 0
-    lastexpansion = MAX_EXPANSION
-    expansionstep = 1
+    xpacStart = 0
+    xpacEnd = MAX_EXPANSION
+    step = 1
   end
+
+  local startType, endType;
   if SI.db.Tooltip.RaidsFirst then
-    firsttype = "R"
-    lasttype = "D"
+    startType = "R"
+    endType = "D"
   else
-    firsttype = "D"
-    lasttype = "R"
+    startType = "D"
+    endType = "R"
   end
-  for i = firstexpansion, lastexpansion, expansionstep do
-    table.insert(orderedlist, firsttype .. i)
+
+  for xpac = xpacStart, xpacEnd, step do
+    table.insert(orderedlist, startType .. xpac)
     if SI.db.Tooltip.CategorySort == "EXPANSION" then
-      table.insert(orderedlist, lasttype .. i)
+      table.insert(orderedlist, endType .. xpac)
     end
   end
   if SI.db.Tooltip.CategorySort == "TYPE" then
-    for i = firstexpansion, lastexpansion, expansionstep do
-      table.insert(orderedlist, lasttype .. i)
+    for i = xpacStart, xpacEnd, step do
+      table.insert(orderedlist, endType .. i)
     end
   end
   SI.oc_cache = orderedlist
+  -- SI:Debug("OrderedCategories sorted")
+  -- DevTools_Dump(orderedlist)
   return orderedlist
 end
 
@@ -1374,6 +1382,16 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
       category = "D1"
     end
   end
+  local _categoryNew = SI.getDifficultyCategory(diffID)
+  if not (category == _categoryNew) then 
+    SI:Debug("Expected category mismatch. old=%s, new=%s, diffID=%s, instance=%s", category, _categoryNew, diffID, instanceKey)
+    -- there a mismatch for AQ20 in retail wow.
+    -- AQ20 had its lockout updated to a 10/25man at some point
+    -- so it doesnt get the difficultyID used for 20m 
+    -- this is an exception that needs to be handled-
+    -- at some point in our info pipeline.
+  end
+  category = _categoryNew
 
   local userIndicators = SI.db.Indicators
   local defaultIndicators = SI.defaultDB.Indicators
@@ -1404,7 +1422,7 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
     and color:WrapTextInColorCode(displayStr))
     or (startColorEscape(color) .. displayStr .. FONTEND);
   
-  -- if using a non blank icon add it to 
+  -- if using a non blank icon add it too
   if displayStr:find("ICON", 1, true) and indicatorIcon ~= "BLANK" then
     displayStr = displayStr:gsub("ICON", FONTEND .. SI.IndicatorIconTextures[indicatorIcon] .. startColorEscape(color))
   end
