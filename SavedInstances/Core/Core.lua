@@ -2945,10 +2945,14 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
   local EMPH = " !!! "
   if lockoutInfo.Extended then
     indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITE:WrapTextInColorCode(EMPH .. L["Extended Lockout - Not yet saved"] .. EMPH ),nil,"CENTER",3)
-  elseif lockoutInfo.Locked == false and lockoutID > 0 
-  and SI.isRetail -- cant extend in wotlk/era (will in cata tho)
-  then
-    indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITE:WrapTextInColorCode(EMPH .. L["Expired Lockout - Can be extended"] .. EMPH ),nil,"CENTER",3)
+  elseif lockoutInfo.Locked == false and lockoutID > 0 then
+    -- cant extend in wotlk/era (will in cata tho)
+    local displayStr = SI.isRetail 
+      and L["Expired Lockout - Can be extended"]
+      -- or RAID_INSTANCE_EXPIRED:format(instanceKey)
+      or RAID_INSTANCE_EXPIRES_EXPIRED
+
+    indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITE:WrapTextInColorCode(EMPH .. displayStr .. EMPH ),nil,"CENTER",3)
   end
   if lockoutInfo.Expires > 0 then
     indicatorTip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["Time Left"] .. ":"), nil, SecondsToTime(instance[toon][difficultyID].Expires - time()))

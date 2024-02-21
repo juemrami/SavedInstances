@@ -1721,7 +1721,9 @@ do
     }
 
     for key, entry in pairs(presets) do
-      if entry.expansion and entry.expansion >= 0 then
+      if entry.expansion and entry.expansion >= 0 
+      and not SI.isClassicEra -- only 1 group needed in era
+      then
         if not options.args.Enable.args.Presets.args['Expansion' .. entry.expansion .. 'Header'] then
           options.args.Enable.args.Presets.args['Expansion' .. entry.expansion .. 'Header'] = {
             order = (entry.expansion + 1) * 100,
