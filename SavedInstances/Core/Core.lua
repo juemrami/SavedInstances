@@ -3768,7 +3768,13 @@ local function doExplicitReset(instanceMsg, resetFailed)
     if not resetFailed then
       C_ChatInfo.SendAddonMessage(addonPrefix, "GENERATION_ADVANCE", reportChannel)
     end
-    if SI.db.Tooltip.ReportResets then
+    if (SI.isRetail 
+      -- on wrath/era defer announcement to NIT
+      or not C_AddOns.IsAddOnLoaded("NovaInstanceTracker")
+      or not NIT.db.sv.global.instanceResetMsg
+    ) 
+     and SI.db.Tooltip.ReportResets 
+    then
       local msg = instanceMsg or RESET_INSTANCES
       msg = msg:gsub("\1241.+;.+;","") -- ticket 76, remove |1;; escapes on koKR
       SendChatMessage("<"..addonPrefix.."> "..msg, reportChannel)
