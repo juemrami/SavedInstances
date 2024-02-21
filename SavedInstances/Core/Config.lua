@@ -144,57 +144,20 @@ elseif SI.isWrath then
   end
 else -- SI.isRetail
   -- Note: Not all these difficulties generate lockouts in the raidinfo tab.
-  -- https://wago.tools/db2/Difficulty
-  local uniqueDiffs = {
-    1,    -- Normal   | typeID: 1
-    14,   -- Normal   | typeID: 2
-    2,    -- Heroic   | typeID: 1
-    15,   -- Heroic   | typeID: 2
-    23,   -- Mythic   | typeID: 1
-    16,   -- Mythic   | typeID: 2
-    3,    -- 10 Player  | typeID: 2
-    5,    -- 10 Player (Heroic)   | typeID: 2
-    4,    -- 25 Player  | typeID: 2
-    6,    -- 25 Player (Heroic)   | typeID: 2
-    9,    -- 40 Player  | typeID: 2
-    192,  -- Challenge Level 1  | typeID: 0
-    19,   -- Event  | typeID: 1
-    18,   -- Event  | typeID: 2
-    20,   -- Event Scenario   | typeID: 1
-    205,  -- Follower   | typeID: 1
-    11,   -- Heroic Scenario  | typeID: 1
-    7,    -- Looking For Raid   | typeID: 2
-    8,    -- Mythic Keystone  | typeID: 1
-    12,   -- Normal Scenario  | typeID: 1
-    168,  -- Path of Ascension: Courage   | typeID: 1
-    171,  -- Path of Ascension: Humility  | typeID: 1
-    169,  -- Path of Ascension: Loyalty   | typeID: 1
-    170,  -- Path of Ascension: Wisdom  | typeID: 1
-    29,   -- PvEvP Scenario   | typeID: 3
-    45,   -- PvP  | typeID: 1
-    34,   -- PvP  | typeID: 3
-    153,  -- Teeming Island   | typeID: 1
-    24,   -- Timewalking  | typeID: 1
-    33,   -- Timewalking  | typeID: 2
-    167,  -- Torghast   | typeID: 1
-    152,  -- Visions of N'Zoth  | typeID: 1
-    172,  -- World Boss   | typeID: 0
-    25,   -- World PvP Scenario   | typeID: 1
-  }
-  -- these difficulties share names with the ones theyre mapped to
+  -- see https://wago.tools/db2/Difficulty
+  -- following IDs share display name with the ones theyre mapped to
   local diffRemap = {
-    [38]  = 1,
-    [147] = 1,
-    [150] = 1,
-    [39]  = 2,
-    [149] = 2,
-    [17]  = 7,
-    [151] = 7,
-    [30]  = 19,
-    [40]  = 23,
-    [32]  = 25,
+    [38]  = 1, -- Normal | typeID: 1
+    [147] = 1, 
+    [150] = 1, 
+    [39]  = 2, -- Heroic | typeID: 1
+    [149] = 2, 
+    [17]  = 7, -- Looking For Raid | typeID: 2
+    [151] = 7, -- Looking For Raid | typeID: 2
+    [40]  = 23, -- Mythic | typeID: 1
+    -- [30]  = 19, -- Event | typeID: 1 (Unused)
+    -- [32]  = 25, -- World PvP Scenario | typeID: 1 (Unused)
    }
-  --- These are ID's which share the same display string as the difficultyIDs theyre mapped to.
   DIFFICULTY_CATEGORY_MAP = {
   [1]   = "D1", -- Normal Dungeons
   [2]   = "D2", -- Heroic Dungeons
@@ -215,9 +178,6 @@ else -- SI.isRetail
 end
 -- CATEGORY_STRINGS.MISC = BINDING_HEADER_COMMENTATORMISC
 
-local FONTEND = FONT_COLOR_CODE_CLOSE
-local GOLDFONT = NORMAL_FONT_COLOR_CODE
-
 -- config global functions
 
 function Config:OnInitialize()
@@ -229,6 +189,7 @@ BINDING_HEADER_SAVEDINSTANCES = "SavedInstances"
 
 -- general helper functions
 
+--- This is the internal function for `ShowIndicatorTooltip` in `Core.lua`, gets the name to be displayed on the internal tooltip when hovering over a characters lockout progress cell.
 function SI:GetDifficultyName(instance,diff,info)
   if not SI.isRetail then
     assert(DIFFICULTY_CATEGORY_MAP, "this table is required for non retail builds.")
@@ -361,9 +322,9 @@ local savedOptions = {}
 function Config:BuildAceConfigOptions()
   ---@type AceConfig.OptionsTable
   local valuesList = { 
-    ["always"] = GREEN_FONT_COLOR_CODE..L["Always show"]..FONTEND,
+    ["always"] = GREEN_FONT_COLOR:WrapTextInColorCode(L["Always show"]),
     ["saved"] = L["Show when saved"],
-    ["never"] = RED_FONT_COLOR_CODE..L["Never show"]..FONTEND,
+    ["never"] = RED_FONT_COLOR:WrapTextInColorCode(L["Never show"]),
   }
   ---@class AceConfig.OptionsTable
   local options = {
@@ -848,7 +809,15 @@ function Config:BuildAceConfigOptions()
             instancesArgs[category] = {
               order = idx,
               type = "group",
-              name = SI.Categories[category],
+              name = function()
+                -- local type, xpac = category:match("(%D)(%d+)")
+                -- local isRaid = type == "R"
+                -- return ("%s: %s"):format(
+                --     _G["EXPANSION_NAME"..xpac],
+                --     isRaid and LFG_TYPE_RAID or LFG_TYPE_DUNGEON
+                -- )
+                return SI.INSTANCE_CATEGORY_NAMES[category]
+              end,
               childGroups = "tree",
               args = (function()
                 local instanceCategoryArgs = {}

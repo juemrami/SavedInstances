@@ -312,7 +312,11 @@
         "RAID_DIFFICULTY_40PLAYER",
         "PLAYER_DIFFICULTY1",
         "PLAYER_DIFFICULTY3",
-        "BINDING_HEADER_COMMENTATORMISC"
+        "BINDING_HEADER_COMMENTATORMISC",
+        "LIGHTYELLOW_FONT_COLOR",
+        "HIGHLIGHT_FONT_COLOR",
+        "GREEN_FONT_COLOR",
+        "NORMAL_FONT_COLOR"
     ],
     "diagnostics.disable": [
         "deprecated",
