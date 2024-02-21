@@ -2945,7 +2945,9 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
   local EMPH = " !!! "
   if lockoutInfo.Extended then
     indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITE:WrapTextInColorCode(EMPH .. L["Extended Lockout - Not yet saved"] .. EMPH ),nil,"CENTER",3)
-  elseif lockoutInfo.Locked == false and lockoutID > 0 then
+  elseif lockoutInfo.Locked == false and lockoutID > 0 
+  and SI.isRetail -- cant extend in wotlk/era (will in cata tho)
+  then
     indicatorTip:SetCell(indicatorTip:AddLine(),1,WHITE:WrapTextInColorCode(EMPH .. L["Expired Lockout - Can be extended"] .. EMPH ),nil,"CENTER",3)
   end
   if lockoutInfo.Expires > 0 then
@@ -4607,9 +4609,9 @@ function SI:ShowTooltip(anchor)
   SI:HistoryUpdate()
   local headText
   if SI.histLiveCount and SI.histLiveCount > 0 then
-    headText = string.format("%s%s (%d/%s)%s",GOLD:GenerateHexColor(),"SavedInstances",SI.histLiveCount,(SI.histOldest or "?"),FONTEND)
+    headText = string.format("\124c%s%s (%d/%s)%s",GOLD:GenerateHexColor(),"SavedInstances",SI.histLiveCount,(SI.histOldest or "?"),FONTEND)
   else
-    headText = string.format("%s%s%s",GOLD:GenerateHexColor(),"SavedInstances",FONTEND)
+    headText = string.format("\124c%s%s%s",GOLD:GenerateHexColor(),"SavedInstances",FONTEND)
   end
   local headLine = tooltip:AddHeader(headText)
   SI:Debug("Setting mouseover script")
