@@ -709,6 +709,17 @@ function Config:BuildAceConfigOptions()
             disabled = not SI.isRetail,
             hidden = not SI.isRetail,
           },
+          TrackWorldBuffs =  {
+            name = L["World Buffs"],
+            type = "toggle",
+            disabled = function()
+                return not SI.isClassicEra
+            end,
+            hidden = function()
+                return not SI.isClassicEra
+            end,
+            order = 46.1 -- ("Track Played" is 46)
+          },
           BindHeader = {
             order = -0.6,
             type = "header",
@@ -1130,7 +1141,6 @@ function Config:BuildAceConfigOptions()
     if SI.isClassicEra then
       icon = GetItemIcon(currencyID)
       name = GetItemInfo(currencyID) or ("Item: "..currencyID)
-      -- SI:Debug("Currency: %s, %s", name or "nil", icon or 'nil')w
     else
       local data = C_CurrencyInfo_GetCurrencyInfo(currencyID)
       name = Currency.OverrideName[currencyID] or data.name
@@ -1138,7 +1148,7 @@ function Config:BuildAceConfigOptions()
     end
 
     if name and icon then
-      icon = "\124T"..icon..":0\124t "
+      icon = "\124T"..icon..":13:13:0:-1:64:64:10:54:10:54\124t "
       savedOptions.args.Currency.args["Currency"..currencyID] = {
         type = "toggle",
         order = headerOffset+idx,
@@ -1172,7 +1182,7 @@ function Config:RegisterAddonSettingsPanel()
   AceDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency")
   AceDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators")
   AceDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances")
-  _, charactersFrameElementID = AceDialog
+  _, characterSettingsElementID = AceDialog
           :AddToBlizOptions(namespace, L["Characters"], namespace, "Characters")
 end
 function Config:ReopenConfigDisplay(frame)

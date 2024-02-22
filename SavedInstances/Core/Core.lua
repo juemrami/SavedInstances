@@ -11,6 +11,8 @@
 
 ---@class SavedInstances: AceEvent-3.0, Frame
 ---@field validCurrencies number[]
+---@field specialCurrency table<number, {weeklyMax: number?, earnByQuest: number[], relatedItem: {id: number, holdingMax: number?}}>
+---@field currencyCategories table<number, string>
 ---@field private lastrefreshlocksched number?
 ---@field private PlayedTime number? Last time `Toon.PlayedLevel` and `Toon.PlayedTotal` were updated. Unix timestamp.
 ---@field private playedpending boolean? Whether `Toon.PlayedLevel` and `Toon.PlayedTotal` need to be updated.
@@ -1741,11 +1743,9 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
     return nil, nil, true
   end
   if typeID == 2 and subtypeID == 0 and difficultyID == 17 and maxPlayers == 0 then
-    --print("ignoring "..id, GetLFGDungeonInfo(id))
     return nil, nil, true -- ignore bogus LFR entries
   end
   if typeID == 1 and subtypeID == 5 and difficultyID == 14 and maxPlayers == 25 then
-    --print("ignoring "..id, GetLFGDungeonInfo(id))
     return nil, nil, true -- ignore old Flex entries
   end
 
@@ -3777,6 +3777,7 @@ local function doExplicitReset(instanceMsg, resetFailed)
     if (SI.isRetail 
       -- on wrath/era defer announcement to NIT
       or not C_AddOns.IsAddOnLoaded("NovaInstanceTracker")
+      ---@diagnostic disable-next-line: undefined-global
       or not NIT.db.sv.global.instanceResetMsg
     ) 
      and SI.db.Tooltip.ReportResets 
@@ -4583,6 +4584,7 @@ end
 local columnCache = { [true] = {} , [false] = {} }
 
 local function addColumns(columns, toon, tooltip)
+  ---@cast tooltip QTip
   for c = 1, maxcol do
     columns[toon..c] = columns[toon..c] or tooltip:AddColumn("CENTER")
   end
@@ -4593,22 +4595,22 @@ SI.scaleCache = {}
 --- The function responsible for generating the addons main tooltip
 ---@param anchor Frame
 function SI:ShowTooltip(anchor)
-  local showall = isShowAllPressed()
+  local shouldShowAll = isShowAllPressed()
   if Tooltip:IsTooltipShown() and
-    SI.showall == showall and
-    SI.scale == (SI.scaleCache[showall] or SI.db.Tooltip.Scale)
+    SI.showall == shouldShowAll and
+    SI.scale == (SI.scaleCache[shouldShowAll] or SI.db.Tooltip.Scale)
   then
     return -- skip update
   end
   local starttime = debugprofilestop()
-  SI.showall = showall
-  local showexpired = showall or SI.db.Tooltip.ShowExpired
+  SI.showall = shouldShowAll
+  local showexpired = shouldShowAll or SI.db.Tooltip.ShowExpired
   local tooltip = Tooltip:AcquireTooltip()
   tooltip:SetCellMarginH(0)
   tooltip.anchorframe = anchor
   tooltip:SetScript("OnUpdate", UpdateTooltip)
   tooltip:Clear()
-  SI.scale = SI.scaleCache[showall] or SI.db.Tooltip.Scale
+  SI.scale = SI.scaleCache[shouldShowAll] or SI.db.Tooltip.Scale
   tooltip:SetScale(SI.scale)
   SI:HistoryUpdate()
   local headText
@@ -4626,16 +4628,16 @@ function SI:ShowTooltip(anchor)
     tooltip:SetCellScript(headLine, 1, "OnMouseDown", OpenWeeklyRewards) 
   end
   SI:UpdateToonData()
-  local columns = localarr("columns")
-  for toon,_ in cpairs(columnCache[showall]) do
-    addColumns(columns, toon, tooltip)
-    columnCache[showall][toon] = false
+  local characterColumns = localarr("columns")
+  for toon,_ in cpairs(columnCache[shouldShowAll]) do
+    addColumns(characterColumns, toon, tooltip)
+    columnCache[shouldShowAll][toon] = false
   end
   -- allocating columns for characters
   for toon, _ in cpairs(SI.db.Toons) do
     if SI.db.Toons[toon].Show == "always" or
       (toon == SI.thisToon and SI.db.Tooltip.SelfAlways) then
-      addColumns(columns, toon, tooltip)
+      addColumns(characterColumns, toon, tooltip)
     end
   end
   -- determining how many instances will be displayed per category
@@ -4683,9 +4685,9 @@ function SI:ShowTooltip(anchor)
           for diffID = 1, MAX_DIFFICULTY_ID do
             if instanceEntry[toon] and instanceEntry[toon][diffID] then
               local expiry = instanceEntry[toon][diffID].Expires
-              if showall then 
+              if shouldShowAll then 
                 categoryshown[category] = true
-              elseif not showall 
+              elseif not shouldShowAll 
                 and (expiry > 0) 
               then
                 categoryshown[category] = true
@@ -4752,7 +4754,7 @@ function SI:ShowTooltip(anchor)
               for diff = 1, MAX_DIFFICULTY_ID do
                 if inst[toon] and inst[toon][diff] and (inst[toon][diff].Expires > 0 or showexpired) then
                   instancerow[instance] = instancerow[instance] or tooltip:AddLine()
-                  addColumns(columns, toon, tooltip)
+                  addColumns(characterColumns, toon, tooltip)
                 end
               end
             end
@@ -4800,7 +4802,7 @@ function SI:ShowTooltip(anchor)
         end
         for diffID = 1, MAX_DIFFICULTY_ID do
           if showcol[diffID] then
-            local col = columns[toon..base]
+            local col = characterColumns[toon..base]
             tooltip:SetCell(row, col,
               DifficultyString(instance, diffID, toon, inst[toon][diffID].Expires == 0), nil, nil, span)
             tooltip:SetCellScript(row, col, "OnEnter", hoverTooltip.ShowIndicatorTooltip, {instance, toon, diffID})
@@ -4824,8 +4826,8 @@ function SI:ShowTooltip(anchor)
               end
             end
             base = base + 1
-          elseif columns[toon..diffID] and showcnt > 1 then
-            tooltip:SetCell(row, columns[toon..diffID], "")
+          elseif characterColumns[toon..diffID] and showcnt > 1 then
+            tooltip:SetCell(row, characterColumns[toon..diffID], "")
           end
         end
       end
@@ -4873,8 +4875,8 @@ function SI:ShowTooltip(anchor)
           saved = saved + SI:GetInstanceEncounterProgress(instance, toon, diff)
         end
         if saved > 0 then
-          addColumns(columns, toon, tooltip)
-          local col = columns[toon..1]
+          addColumns(characterColumns, toon, tooltip)
+          local col = characterColumns[toon..1]
           tooltip:SetCell(line, col, DifficultyString(pinstance, diff, toon, false, saved, total),nil,nil,4)
           tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowLFRTooltip, {boxname, toon, curr})
           tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
@@ -4899,8 +4901,8 @@ function SI:ShowTooltip(anchor)
         end
       end
       if saved > 0 then
-        addColumns(columns, toon, tooltip)
-        local col = columns[toon..1]
+        addColumns(characterColumns, toon, tooltip)
+        local col = characterColumns[toon..1]
         tooltip:SetCell(line, col, DifficultyString(worldBosses[1], diff, toon, false, saved, #worldBosses),nil,nil,4)
         tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowWorldBossTooltip, {worldBosses, toon, saved})
         tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
@@ -4911,13 +4913,13 @@ function SI:ShowTooltip(anchor)
   local holidayinst = localarr("holidayinst")
   local firstlfd = true
   for instance, info in pairs(SI.db.Instances) do
-    if showall or
+    if shouldShowAll or
       (info.Holiday and SI.db.Tooltip.ShowHoliday) or
       (info.Random and SI.db.Tooltip.ShowRandom) then
       for toon, t in cpairs(SI.db.Toons, true) do
         local d = info[toon] and info[toon][1]
         if d then
-          addColumns(columns, toon, tooltip)
+          addColumns(characterColumns, toon, tooltip)
           local row = holidayinst[instance]
           if not row then
             if SI.db.Tooltip.CategorySpaces and firstlfd then
@@ -4928,7 +4930,7 @@ function SI:ShowTooltip(anchor)
             holidayinst[instance] = row
           end
           local tstr = SecondsToTime(d.Expires - time(), false, false, 1)
-          tooltip:SetCell(row, columns[toon..1], ClassColorise(t.Class,tstr),nil,"CENTER",maxcol)
+          tooltip:SetCell(row, characterColumns[toon..1], ClassColorise(t.Class,tstr),nil,"CENTER",maxcol)
           tooltip:SetLineScript(row, "OnMouseDown", OpenLFD, info.lfgDungeonID)
         end
       end
@@ -4936,14 +4938,14 @@ function SI:ShowTooltip(anchor)
   end
 
   -- random dungeon
-  if SI.db.Tooltip.TrackLFG or showall then
+  if SI.db.Tooltip.TrackLFG or shouldShowAll then
     ---@type boolean|number, boolean|number
     local cd1,cd2 = false,false
     for toon, t in cpairs(SI.db.Toons, true) do
       cd2 = cd2 or t.LFG2
-      cd1 = cd1 or (t.LFG1 and (not t.LFG2 or showall))
+      cd1 = cd1 or (t.LFG1 and (not t.LFG2 or shouldShowAll))
       if t.LFG1 or t.LFG2 then
-        addColumns(columns, toon, tooltip)
+        addColumns(characterColumns, toon, tooltip)
       end
     end
     local randomLine
@@ -4961,15 +4963,15 @@ function SI:ShowTooltip(anchor)
     for toon, t in cpairs(SI.db.Toons, true) do
       local d1 = (t.LFG1 and t.LFG1 - time()) or -1
       local d2 = (t.LFG2 and t.LFG2 - time()) or -1
-      if d1 > 0 and (d2 < 0 or showall) then
-        local col = columns[toon..1]
+      if d1 > 0 and (d2 < 0 or shouldShowAll) then
+        local col = characterColumns[toon..1]
         local tstr = SecondsToTime(d1, false, false, 1)
         tooltip:SetCell(cd1, col, ClassColorise(t.Class,tstr), nil, "CENTER",maxcol)
         tooltip:SetCellScript(cd1, col, "OnEnter", hoverTooltip.ShowSpellIDTooltip, {toon,-1,tstr})
         tooltip:SetCellScript(cd1, col, "OnLeave", CloseTooltips)
       end
       if d2 > 0 then
-        local col = columns[toon..1]
+        local col = characterColumns[toon..1]
         local tstr = SecondsToTime(d2, false, false, 1)
         tooltip:SetCell(cd2, col, ClassColorise(t.Class,tstr), nil, "CENTER",maxcol)
         tooltip:SetCellScript(cd2, col, "OnEnter", hoverTooltip.ShowSpellIDTooltip, {toon,71041,tstr})
@@ -4977,13 +4979,13 @@ function SI:ShowTooltip(anchor)
       end
     end
   end
-  if SI.db.Tooltip.TrackDeserter or showall then
+  if SI.db.Tooltip.TrackDeserter or shouldShowAll then
     ---@type boolean|number
     local show = false
     for toon, t in cpairs(SI.db.Toons, true) do
       if t.pvpdesert then
         show = true
-        addColumns(columns, toon, tooltip)
+        addColumns(characterColumns, toon, tooltip)
       end
     end
     if show then
@@ -4995,7 +4997,7 @@ function SI:ShowTooltip(anchor)
     end
     for toon, t in cpairs(SI.db.Toons, true) do
       if t.pvpdesert and time() < t.pvpdesert then
-        local col = columns[toon..1]
+        local col = characterColumns[toon..1]
         local tstr = SecondsToTime(t.pvpdesert - time(), false, false, 1)
         tooltip:SetCell(show --[[@as number]], col, ClassColorise(t.Class,tstr),nil, "CENTER",maxcol)
         tooltip:SetCellScript(show --[[@as number]], col, "OnEnter", hoverTooltip.ShowSpellIDTooltip, {toon,26013,tstr})
@@ -5008,18 +5010,18 @@ function SI:ShowTooltip(anchor)
     local showDailies, showWeeklies
     for toonName, t in cpairs(SI.db.Toons, true) do
       local dailyCount, weeklyCount = SI:QuestCount(toonName)
-      if dailyCount > 0 and (SI.db.Tooltip.TrackDailyQuests or showall) then
+      if dailyCount > 0 and (SI.db.Tooltip.TrackDailyQuests or shouldShowAll) then
         showDailies = true
-        addColumns(columns, toonName, tooltip)
+        addColumns(characterColumns, toonName, tooltip)
       end
-      if weeklyCount > 0 and (SI.db.Tooltip.TrackWeeklyQuests or showall) then
+      if weeklyCount > 0 and (SI.db.Tooltip.TrackWeeklyQuests or shouldShowAll) then
         showWeeklies = true
-        addColumns(columns, toonName, tooltip)
+        addColumns(characterColumns, toonName, tooltip)
       end
     end
     local adc, awc = SI:QuestCount(nil)
-    if adc > 0 and (SI.db.Tooltip.TrackDailyQuests or showall) then showDailies = true end
-    if awc > 0 and (SI.db.Tooltip.TrackWeeklyQuests or showall) then showWeeklies = true end
+    if adc > 0 and (SI.db.Tooltip.TrackDailyQuests or shouldShowAll) then showDailies = true end
+    if awc > 0 and (SI.db.Tooltip.TrackWeeklyQuests or shouldShowAll) then showWeeklies = true end
     if SI.db.Tooltip.CategorySpaces and (showDailies or showWeeklies) then
       addsep()
     end
@@ -5039,7 +5041,7 @@ function SI:ShowTooltip(anchor)
     end
     for toon, t in cpairs(SI.db.Toons, true) do
       local dc, wc = SI:QuestCount(toon)
-      local col = columns[toon..1]
+      local col = characterColumns[toon..1]
       if showDailies and col and dc > 0 then
         tooltip:SetCell(showDailies, col, ClassColorise(t.Class,dc),nil, "CENTER",maxcol)
         tooltip:SetCellScript(showDailies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dc,true})
@@ -5053,7 +5055,7 @@ function SI:ShowTooltip(anchor)
     end
   end
 
-  Progress:ShowTooltip(tooltip, columns, showall, function()
+  Progress:ShowTooltip(tooltip, characterColumns, shouldShowAll, function()
     if SI.db.Tooltip.CategorySpaces then
       addsep()
     end
@@ -5065,7 +5067,7 @@ function SI:ShowTooltip(anchor)
   if SI.isRetail then
     --- Warfronts
     ---@diagnostic disable-next-line: undefined-field
-    if Warfront then Warfront:ShowTooltip(tooltip, columns, showall,
+    if Warfront then Warfront:ShowTooltip(tooltip, characterColumns, shouldShowAll,
       function()
         if SI.db.Tooltip.CategorySpaces then
           addsep()
@@ -5076,14 +5078,14 @@ function SI:ShowTooltip(anchor)
       end)
     end
     --- Myhtic Plus
-    if SI.db.Tooltip.MythicKey or showall then
+    if SI.db.Tooltip.MythicKey or shouldShowAll then
       ---@type boolean|number
       local show = false
       for toon, t in cpairs(SI.db.Toons, true) do
         if t.MythicKey then
           if t.MythicKey.link then
             show = true
-            addColumns(columns, toon, tooltip)
+            addColumns(characterColumns, toon, tooltip)
           end
         end
       end
@@ -5098,7 +5100,7 @@ function SI:ShowTooltip(anchor)
       end
       for toon, t in cpairs(SI.db.Toons, true) do
         if t.MythicKey and t.MythicKey.link then
-          local col = columns[toon..1]
+          local col = characterColumns[toon..1]
           local name
           if SI.db.Tooltip.AbbreviateKeystone then
             name = SI.KeystoneAbbrev[t.MythicKey.mapID] or t.MythicKey.name
@@ -5111,17 +5113,17 @@ function SI:ShowTooltip(anchor)
         end
       end
     end
-    if SI.db.Tooltip.TimewornMythicKey or showall then
+    if SI.db.Tooltip.TimewornMythicKey or shouldShowAll then
       ---@type boolean|number
       local show = false
       for toon, t in cpairs(SI.db.Toons, true) do
         if t.TimewornMythicKey and t.TimewornMythicKey.link then
           show = true
-          addColumns(columns, toon, tooltip)
+          addColumns(characterColumns, toon, tooltip)
         end
       end
       if show then
-        if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or showall) then
+        if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or shouldShowAll) then
           addsep()
         end
         show = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode( L["Timeworn Mythic Keystone"] ))
@@ -5131,7 +5133,7 @@ function SI:ShowTooltip(anchor)
       end
       for toon, t in cpairs(SI.db.Toons, true) do
         if t.TimewornMythicKey and t.TimewornMythicKey.link then
-          local col = columns[toon..1]
+          local col = characterColumns[toon..1]
           local name
           if SI.db.Tooltip.AbbreviateKeystone then
             name = SI.KeystoneAbbrev[t.TimewornMythicKey.mapID] or t.TimewornMythicKey.name
@@ -5144,19 +5146,19 @@ function SI:ShowTooltip(anchor)
         end
       end
     end
-    if SI.db.Tooltip.MythicKeyBest or showall then
+    if SI.db.Tooltip.MythicKeyBest or shouldShowAll then
       ---@type boolean|number
       local show = false
       for toon, t in cpairs(SI.db.Toons, true) do
         if t.MythicKeyBest then
           if t.MythicKeyBest.lastCompletedIndex or t.MythicKeyBest.rewardWaiting then
             show = true
-            addColumns(columns, toon, tooltip)
+            addColumns(characterColumns, toon, tooltip)
           end
         end
       end
       if show then
-        if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or SI.db.Tooltip.TimewornMythicKey or showall) then
+        if SI.db.Tooltip.CategorySpaces and not (SI.db.Tooltip.MythicKey or SI.db.Tooltip.TimewornMythicKey or shouldShowAll) then
           addsep()
         end
         show = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["Mythic Key Best"]))
@@ -5179,7 +5181,7 @@ function SI:ShowTooltip(anchor)
             end
           end
           if keydesc ~= "" then
-            local col = columns[toon..1]
+            local col = characterColumns[toon..1]
             ---@cast show number
             tooltip:SetCell(show, col, keydesc, nil, "CENTER", maxcol)
             tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowMythicPlusTooltip, {toon, keydesc})
@@ -5191,12 +5193,12 @@ function SI:ShowTooltip(anchor)
     --- Emissary
     local firstEmissary = true
     for expansionLevel, _ in pairs(SI.Emissaries) do
-      if SI.db.Tooltip["Emissary" .. expansionLevel] or showall then
+      if SI.db.Tooltip["Emissary" .. expansionLevel] or shouldShowAll then
         local day, tbl, show
         for toon, t in cpairs(SI.db.Toons, true) do
           if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
             for day, tbl in pairs(t.Emissary[expansionLevel].days) do
-              if showall or SI.db.Tooltip.EmissaryShowCompleted == true or tbl.isComplete == false then
+              if shouldShowAll or SI.db.Tooltip.EmissaryShowCompleted == true or tbl.isComplete == false then
                 if not show then show = {} end
                 if not show[day] then show[day] = {} end
                 if not show[day][1] then
@@ -5229,7 +5231,7 @@ function SI:ShowTooltip(anchor)
                 for day = 1, 3 do
                   tbl = t.Emissary[expansionLevel].days[day]
                   if tbl then
-                    local col = columns[toon .. day]
+                    local col = characterColumns[toon .. day]
                     local text = ""
                     if tbl.isComplete == true then
                       text = SI.questCheckMark
@@ -5288,7 +5290,7 @@ function SI:ShowTooltip(anchor)
                   if t.Emissary and t.Emissary[expansionLevel] and t.Emissary[expansionLevel].unlocked then
                     tbl = t.Emissary[expansionLevel].days[day]
                     if tbl then
-                      local col = columns[toon .. 1]
+                      local col = characterColumns[toon .. 1]
                       local text = ""
                       if tbl.isComplete == true then
                         text = SI.questCheckMark
@@ -5320,12 +5322,12 @@ function SI:ShowTooltip(anchor)
       end
     end
     --- Callings
-    if SI.db.Tooltip.Calling or showall then
+    if SI.db.Tooltip.Calling or shouldShowAll then
       local show
       for day = 1, 3 do
         for toon, t in cpairs(SI.db.Toons, true) do
           if t.Calling and t.Calling.unlocked then
-            if showall or SI.db.Tooltip.CallingShowCompleted or (t.Calling[day] and not t.Calling[day].isCompleted) then
+            if shouldShowAll or SI.db.Tooltip.CallingShowCompleted or (t.Calling[day] and not t.Calling[day].isCompleted) then
               if not show then show = {} end
               show[day] = true
               break
@@ -5342,7 +5344,7 @@ function SI:ShowTooltip(anchor)
           for toon, t in cpairs(SI.db.Toons, true) do
             if t.Calling and t.Calling.unlocked then
               for day = 1, 3 do
-                local col = columns[toon .. day]
+                local col = characterColumns[toon .. day]
                 local text = ""
                 if t.Calling[day].isCompleted then
                   text = SI.questCheckMark
@@ -5391,7 +5393,7 @@ function SI:ShowTooltip(anchor)
               )
               for toon, t in cpairs(SI.db.Toons, true) do
                 if t.Calling and t.Calling.unlocked then
-                  local col = columns[toon .. 1]
+                  local col = characterColumns[toon .. 1]
                   local text = ""
                   if t.Calling[day].isCompleted then
                     text = SI.questCheckMark
@@ -5421,12 +5423,12 @@ function SI:ShowTooltip(anchor)
       end
     end
     --- Reputation Paragon Chests 
-    if SI.db.Tooltip.TrackParagon or showall then
+    if SI.db.Tooltip.TrackParagon or shouldShowAll then
       local show
       for toon, t in cpairs(SI.db.Toons, true) do
         if t.Paragon and #t.Paragon > 0 then
           show = true
-          addColumns(columns, toon, tooltip)
+          addColumns(characterColumns, toon, tooltip)
         end
       end
       if show then
@@ -5436,7 +5438,7 @@ function SI:ShowTooltip(anchor)
         show = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["Paragon Chests"]))
         for toon, t in cpairs(SI.db.Toons, true) do
           if t.Paragon and #t.Paragon > 0 then
-            local col = columns[toon..1]
+            local col = characterColumns[toon..1]
             tooltip:SetCell(show, col, #t.Paragon, nil, "CENTER", maxcol)
             tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowParagonTooltip, toon)
             tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
@@ -5445,7 +5447,7 @@ function SI:ShowTooltip(anchor)
       end
     end
     --- Bonus Rolls
-    if SI.db.Tooltip.TrackBonus or showall then
+    if SI.db.Tooltip.TrackBonus or shouldShowAll then
       local show
       local toonbonus = localarr("toonbonus")
       for toon, t in cpairs(SI.db.Toons, true) do
@@ -5464,7 +5466,7 @@ function SI:ShowTooltip(anchor)
       end
       for toon, t in cpairs(SI.db.Toons, true) do
         if toonbonus[toon] then
-          local col = columns[toon..1]
+          local col = characterColumns[toon..1]
           local str = toonbonus[toon]
           if str > 0 then str = "+"..str end
           if col then
@@ -5479,13 +5481,13 @@ function SI:ShowTooltip(anchor)
     end
   end
 
-  if SI.db.Tooltip.TrackSkills or showall then
+  if SI.db.Tooltip.TrackSkills or shouldShowAll then
     ---@type boolean|number
     local show = false
     for toon, t in cpairs(SI.db.Toons, true) do
       if t.Skills and next(t.Skills) then
         show = true
-        addColumns(columns, toon, tooltip)
+        addColumns(characterColumns, toon, tooltip)
       end
     end
     if show then
@@ -5500,11 +5502,50 @@ function SI:ShowTooltip(anchor)
         for _ in pairs(t.Skills) do cnt = cnt + 1 end
       end
       if cnt > 0 then
-        local col = columns[toon..1]
+        local col = characterColumns[toon..1]
         ---@cast show number
         tooltip:SetCell(show, col, ClassColorise(t.Class,cnt), nil,"CENTER",maxcol)
         tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowSkillTooltip, {toon, cnt})
         tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
+      end
+    end
+  end
+
+  if (SI.db.Tooltip.TrackWorldBuffs or shouldShowAll) 
+  and SI.isClassicEra
+  then
+    local isCategoryShownYet = false
+    local shouldAddSep = SI.db.Tooltip.CategorySpaces
+    local rowIdx 
+    local colIdx
+    for toon, store in cpairs(SI.db.Toons, true) do
+      if store.WorldBuffs and next(store.WorldBuffs) then
+        local numCharBuffs = 0
+        for _ in pairs(store.WorldBuffs) do
+          numCharBuffs = numCharBuffs + 1
+        end 
+
+        if numCharBuffs > 0 
+        -- hack to only show alts only when theyre already being shown in the tooltip. 
+        -- (ie column alrdy allocated for them)
+        and (store.Level >= SI.maxLevel 
+        or characterColumns[toon..1] or toon == SI.thisToon)
+        then
+          if not isCategoryShownYet then
+            if shouldAddSep then addsep() end
+            rowIdx = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["World Buffs"]))
+            isCategoryShownYet = true
+          end
+            addColumns(characterColumns, toon, tooltip)
+            colIdx = characterColumns[toon..1]
+            tooltip:SetCell(rowIdx, colIdx, ClassColorise(store.Class, numCharBuffs), nil, "CENTER", maxcol)
+            tooltip:SetCellScript(rowIdx, colIdx, "OnEnter",
+              function()
+                SI:GetModule("WorldBuffs")
+                  :ShowCharacterTooltip(toon)
+              end)
+            tooltip:SetCellScript(rowIdx, colIdx, "OnLeave", CloseTooltips)
+          end
       end
     end
   end
@@ -5515,7 +5556,7 @@ function SI:ShowTooltip(anchor)
     ckeys = SI.currencySorted
   end
   for _, currencyID in ipairs(ckeys) do
-    if SI.db.Tooltip["Currency" .. currencyID] or showall then
+    if SI.db.Tooltip["Currency" .. currencyID] or shouldShowAll then
       local show
       for toon, t in cpairs(SI.db.Toons, true) do
         -- ci.name, ci.amount, ci.earnedThisWeek, ci.weeklyMax, ci.totalMax, ci.relatedItemCount
@@ -5523,10 +5564,10 @@ function SI:ShowTooltip(anchor)
         if ci then
           local gotThisWeek = ((ci.earnedThisWeek or 0) > 0 and (ci.weeklyMax or 0) > 0)
           local gotSome = ((ci.relatedItemCount or 0) > 0) or ((ci.amount or 0) > 0)
-          if gotThisWeek or (gotSome and showall) then
-            addColumns(columns, toon, tooltip)
+          if gotThisWeek or (gotSome and shouldShowAll) then
+            addColumns(characterColumns, toon, tooltip)
           end
-          if not show and (gotThisWeek or gotSome) and columns[toon .. 1] then
+          if not show and (gotThisWeek or gotSome) and characterColumns[toon .. 1] then
             local name, icon;
             if SI.isClassicEra then
               icon = GetItemIcon(currencyID)
@@ -5536,6 +5577,7 @@ function SI:ShowTooltip(anchor)
               name = Currency.OverrideName[currencyID] or data.name
               icon = Currency.OverrideTexture[currencyID] or data.iconFileID
             end
+            assert(icon and name, "info not found for currency", currencyID, icon, name)
             show = format(" \124T%s:0\124t%s", icon, name)
           end
         end
@@ -5554,7 +5596,7 @@ function SI:ShowTooltip(anchor)
 
         for toon, toonData in cpairs(SI.db.Toons, true) do
           local toonCurrencyInfo = toonData.currency and toonData.currency[currencyID]
-          local col = columns[toon..1]
+          local col = characterColumns[toon..1]
           if toonCurrencyInfo and col then
             local earned, weeklymax, totalmax = "","",""
             if SI.db.Tooltip.CurrencyMax then
@@ -5565,7 +5607,7 @@ function SI:ShowTooltip(anchor)
                 totalmax = "/"..SI:formatNumber(toonCurrencyInfo.totalMax)
               end
             end
-            if SI.db.Tooltip.CurrencyEarned or showall then
+            if SI.db.Tooltip.CurrencyEarned or shouldShowAll then
               earned = CurrencyColor(toonCurrencyInfo.amount,toonCurrencyInfo.totalMax)..totalmax
             end
             local str
@@ -5604,7 +5646,7 @@ function SI:ShowTooltip(anchor)
   end
 
   -- toon names
-  for toondiff, col in pairs(columns) do
+  for toondiff, col in pairs(characterColumns) do
     local toon = strsub(toondiff, 1, #toondiff-1)
     local diff = strsub(toondiff, #toondiff, #toondiff)
     if diff == "1" then
@@ -5664,7 +5706,7 @@ function SI:ShowTooltip(anchor)
     end
     hintLine, hintCol = tooltip:AddLine()
     tooltip:SetCell(hintLine, hintCol, L["Hover mouse on indicator for details"], nil,"LEFT", tooltip:GetColumnCount())
-    if not showall then
+    if not shouldShowAll then
       hintLine, hintCol = tooltip:AddLine()
       tooltip:SetCell(hintLine, hintCol, L["Hold Alt to show all data"], nil,"LEFT", math.max(1,tooltip:GetColumnCount()-maxcol))
       if tooltip:GetColumnCount() < maxcol+1 then
@@ -5678,12 +5720,12 @@ function SI:ShowTooltip(anchor)
   -- cache check
   local fail = false
   local maxidx = 0
-  for toon,val in cpairs(columnCache[showall]) do
+  for toon,val in cpairs(columnCache[shouldShowAll]) do
     if not val then -- remove stale column
-      columnCache[showall][toon] = nil
+      columnCache[shouldShowAll][toon] = nil
       fail = true
     else
-      local thisidx = columns[toon..1]
+      local thisidx = characterColumns[toon..1]
       if thisidx < maxidx then -- sort failure caused by new middle-insertion
         fail = true
       end
@@ -5693,7 +5735,7 @@ function SI:ShowTooltip(anchor)
   if fail then -- retry with corrected cache
     SI:Debug("Tooltip cache miss")
     ---@diagnostic disable-next-line: need-check-nil
-    SI.scaleCache[showall] = nil
+    SI.scaleCache[shouldShowAll] = nil
     --SI:ShowTooltip(anchorframe)
     -- reschedule continuation to reduce time-slice exceeded errors in combat
     SI:ScheduleTimer("ShowTooltip", 0, anchor)
@@ -5729,7 +5771,7 @@ function SI:ShowTooltip(anchor)
         tooltip:SetScale(scale)
         tooltip:Hide()
         ---@diagnostic disable-next-line: need-check-nil
-        SI.scaleCache[showall] = scale
+        SI.scaleCache[shouldShowAll] = scale
         SI:ScheduleTimer("ShowTooltip", 0, anchor) -- re-render fonts
       end
     end

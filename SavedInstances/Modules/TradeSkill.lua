@@ -537,7 +537,7 @@ function Module:ScanPlayerTradeSkills(isAll)
         C_TradeSkillUI_GetRecipeInfo(recipieID), recipieID, SecondsToTime(remainingCD or 0)
       )
     end
-    
+    local expiry
     if remainingCD and isDayCooldown -- GetRecipeCooldown often returns WRONG answers for daily cds
     and not tonumber(trackedTradeCrafts[recipieID]) -- daily flag incorrectly set for some multi-day cds (Northrend Alchemy Research)
     then
