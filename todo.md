@@ -15,14 +15,13 @@
     
     - anything thats super computationally expensive should be saved to SavedVars but thats it. 
 
-
-- [ ] add category headers for the currencies in classic, so the options dont look as complicated/messy for it. (since there is alot of currencies to pick from)
-
 - [ ] compare the instance history tracking to something like Nova Instance Tracker, and see if there is anything that can be improved upon.
 
-- [ ] World buff tracking for classic.
-
 - [ ] Modify modules to be able to loaded on any client but only functional on the client they are intended for. (ie indexing any function/member on say `Callings` or `Warfront` modules while not SI.isRetail should return nil but still be indexable)
+
+- [x] add category headers for the currencies in classic, so the options dont look as complicated/messy for it. (since there is alot of currencies to pick from)
+
+- [x] World buff tracking for classic.
 
 - [x] Migrate changes from `/Modules/Wrath/Progress.lua` into `/Modules/Progress.lua`
 
