@@ -1,5 +1,4 @@
----@class SavedInstances
----@field logout boolean
+---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
 
 ---@class CurrencyModule : AceModule , AceEvent-3.0, AceTimer-3.0, AceBucket-3.0
@@ -135,12 +134,16 @@ local allCurrencies = {
 }
 
 --- There is no designated currency api in classic. Any "currency" is just a bag item. 
+-- list of category names followed by currencyIds for that category
+---@type (string|number)[]
 local classicCurrencies = {
   -- Holiday Currency
+  CALENDAR_FILTER_WEEKLY_HOLIDAYS,
   19182, -- Darkmoon Faire Prize Ticket
   21100, -- Coin of Ancestry
 
-  -- ZG Bijous + Coins
+  -- ZG Coins+Bijous
+  DUNGEON_FLOOR_ZULGURUB1,
   19698, -- Zulian Coin
   19699, -- Razzashi Coin
   19700, -- Hakkari Coin
@@ -161,12 +164,14 @@ local classicCurrencies = {
   19715, -- Gold Hakkari Bijou
 
   -- Battleground Rewards
+  BATTLEFIELDS,
   -- 19322, -- Warsong Mark of Honor (DEPRECATED) https://www.wowhead.com/classic/item=19322
   20558, -- Warsong Gulch Mark of Honor
   20559, -- Arathi Basin Mark of Honor
   20560, -- Alterac Valley Mark of Honor
 
   -- AQ Scarabs + Idols
+  DUNGEON_FLOOR_RUINSOFAHNQIRAJ1,
   20858, -- Stone Scarab
   20859, -- Gold Scarab
   20860, -- Silver Scarab
@@ -193,12 +198,14 @@ local classicCurrencies = {
   20882, -- Idol of War
 
   -- Naxx Gear Reagents
+  L["Naxxramas"],
   22373, -- Wartorn Leather Scrap
   22374, -- Wartorn Chain Scrap
   22375, -- Wartorn Plate Scrap
   22376, -- Wartorn Cloth Scrap
 
   -- Argent Dawn Related
+  L["Argent Dawn"],
   12840, -- Minion's Scourgestone
   12841, -- Invader's Scourgestone
   12843, -- Corruptor's Scourgestone
@@ -207,11 +214,13 @@ local classicCurrencies = {
   22524, -- Insignia of the Crusade
 
   -- Silithus Quests
+  L["Silithus"],
   20800, -- Cenarion Logistics Badge
   20801, -- Cenarion Tactical Badge
   20802, -- Cenarion Combat Badge
 
   -- MC
+  DUNGEON_FLOOR_MOLTENCORE1,
   17333, -- Aqual Quintessence
   22754, -- Eternal Quintessence
 }
@@ -221,12 +230,19 @@ SI.currency = allCurrencies
 
 local currencySorted = {}
 local validCurrencies = {}
+local currencyCategories = {}
 if SI.isClassicEra then
   SI:Debug("Classic Era detected using classicCurrencies")
+  local lastCategory
   for _, currencyID in ipairs(classicCurrencies) do
-    -- table.insert(allCurrencies, currencyID)
-    table.insert(validCurrencies, currencyID)
-    table.insert(currencySorted, currencyID)
+    if type (currencyID) == "string" then
+      lastCategory = currencyID
+    else
+      table.insert(validCurrencies, currencyID)
+      -- table.insert(allCurrencies, currencyID
+      table.insert(currencySorted, currencyID)
+      currencyCategories[currencyID] = lastCategory
+    end
   end
 else
   for _, currencyID in ipairs(allCurrencies) do
@@ -249,6 +265,7 @@ table.sort(currencySorted, function (c1, c2)
 end)
 SI.currencySorted = currencySorted
 SI.validCurrencies = validCurrencies
+SI.currencyCategories = currencyCategories
 
 local hiddenCurrency = {}
 
@@ -427,7 +444,7 @@ function Module:UpdateCurrencyItem()
   end
 
   if SI.isClassicEra then
-    for _, currencyID in ipairs(classicCurrencies) do
+    for _, currencyID in ipairs(validCurrencies) do
       local currencyInfo = SI.db.Toons[SI.thisToon].currency[currencyID] or {}
       currencyInfo.amount = GetItemCount(currencyID)
       currencyInfo.relatedItemCount = GetItemCount(currencyID)

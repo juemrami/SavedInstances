@@ -1135,7 +1135,18 @@ function Config:BuildAceConfigOptions()
   end
   
   local headerOffset = savedOptions.args.Currency.args.CurrencyHeader.order
-  for idx, currencyID in ipairs(SI.validCurrencies) do 
+  for idx, currencyID in ipairs(SI.validCurrencies) do
+    local category = SI.currencyCategories[currencyID]
+    local categoryHeader = savedOptions.args.Currency.args["CurrencyCategory"..category]
+    if category and 
+    not categoryHeader then
+      categoryHeader = {
+        type = "header",
+        order = headerOffset+idx,
+        name = category,
+      }
+      savedOptions.args.Currency.args["CurrencyCategory"..category] = categoryHeader
+    end
     local name
     local icon ---@type string|number?
     if SI.isClassicEra then
