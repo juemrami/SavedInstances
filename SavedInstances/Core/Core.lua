@@ -128,7 +128,10 @@ if SI.isRetail then
   MythicPlus = SI:GetModule('MythicPlus')
   Warfront = SI:GetModule('Warfront')
 end
-
+local WorldBuffs 
+if SI.isClassicEra then
+  WorldBuffs = SI:GetModule('WorldBuffs') --[[@as WorldBuffsModule]]
+end
 SI.Indicators = {
   ICON_STAR = ICON_LIST[1] .. "16:16:0:0|t",
   ICON_CIRCLE = ICON_LIST[2] .. "16:16:0:0|t",
@@ -5064,6 +5067,7 @@ function SI:ShowTooltip(anchor)
     end
   end)
 
+  -- Retail Specific Modules
   if SI.isRetail then
     --- Warfronts
     ---@diagnostic disable-next-line: undefined-field
@@ -5511,8 +5515,9 @@ function SI:ShowTooltip(anchor)
     end
   end
 
-  if (SI.db.Tooltip.TrackWorldBuffs or shouldShowAll) 
-  and SI.isClassicEra
+  -- World Buffs
+  if (SI.db.Tooltip.TrackWorldBuffs or shouldShowAll)
+  and WorldBuffs 
   then
     local isCategoryShownYet = false
     local shouldAddSep = SI.db.Tooltip.CategorySpaces
@@ -5541,8 +5546,7 @@ function SI:ShowTooltip(anchor)
             tooltip:SetCell(rowIdx, colIdx, ClassColorise(store.Class, numCharBuffs), nil, "CENTER", maxcol)
             tooltip:SetCellScript(rowIdx, colIdx, "OnEnter",
               function()
-                SI:GetModule("WorldBuffs")
-                  :ShowCharacterTooltip(toon)
+                WorldBuffs:ShowCharacterTooltip(toon)
               end)
             tooltip:SetCellScript(rowIdx, colIdx, "OnLeave", CloseTooltips)
           end

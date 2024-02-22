@@ -133,10 +133,12 @@ local function UpdateAllCurrentPlayerBuffs()
     end
 end
 function Module:OnEnable()
-    playerBuffStore = SI.db.Toons[SI.thisToon].WorldBuffs
+    assert(SavedInstancesDB) -- ensure saved variables are loaded
+    local characterDB = SavedInstancesDB.Toons
+    playerBuffStore = characterDB[SI.thisToon].WorldBuffs
     if not playerBuffStore then
         playerBuffStore = {}
-        SI.db.Toons[SI.thisToon].WorldBuffs = playerBuffStore
+        characterDB[SI.thisToon].WorldBuffs = playerBuffStore
     end
     self:RegisterEvent("UNIT_AURA")
     
@@ -220,6 +222,7 @@ local lastTooltipUpdate = 0
 local refreshWindow = 60 -- 1min
 ---@param characterKey string
 function Module:ShowCharacterTooltip(characterKey)
+    assert(SI.db, "private reference SavedInstancesDB is not found. Make sure this functions is called after Core.lua has been loaded.")
     local buffStore = SI.db.Toons[characterKey] and SI.db.Toons[characterKey].WorldBuffs
     if not buffStore then return end
 
@@ -275,6 +278,7 @@ end
 ---@param characterKey string
 ---@return WorldBuffsModule.CachedBuffs?
 function Module:GetCharacterWorldBuffs(characterKey)
+    assert(SI.db, "private reference SavedInstancesDB is not found. Make sure this functions is called after Core.lua has been loaded.")
     if not characterKey or SI.db.Toons[characterKey] then return end
     -- update cache if not present
     if not self.characterWorldBuffCache[characterKey] then

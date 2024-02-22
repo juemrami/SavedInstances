@@ -41,9 +41,9 @@ Modules\TradeSkill.lua
 # Modules\Paragon.lua
 # Modules\Warfront.lua
 # Modules\WorldBoss.lua
+# requies DB
+Modules\WorldBuffs.lua
 
 Core\Config.lua
 Core\Core.lua
 
-# requies DB
-Modules\WorldBuffs.lua
