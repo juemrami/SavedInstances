@@ -653,6 +653,7 @@ SI.defaultDB = {
     ---@type "EXPANSION"|"TYPE"
     CategorySort = "EXPANSION",
     ShowSoloCategory = SI.isClassicEra and true or false, -- default to true on era
+    CurrencyHideUntracked = SI.isClassicEra and true or false,
     ShowHints = true,
     ReportResets = true,
     LimitWarn = true,
@@ -5555,23 +5556,64 @@ function SI:ShowTooltip(anchor)
   end
 
   local firstcurrency = true
-  local ckeys = currency
-  if SI.db.Tooltip.CurrencySortName then
-    ckeys = SI.currencySorted
+  local currencies = SI.db.Tooltip.CurrencySortName 
+    and SI.currencySorted 
+    or SI.validCurrencies;
+
+  local shouldShowOnAll = function(currencyID)
+    -- retain old functionality in clients with C_Currency api
+    if not SI.isClassicEra then
+      return true
+    end
+    assert(
+      type(SI.db.Tooltip.CurrencyHideUntracked) == "boolean", 
+      "CurrencyHideUntracked must be defined"
+    )
+    if not SI.db.Tooltip["Currency" .. currencyID]
+      and SI.db.Tooltip.CurrencyHideUntracked
+    then
+      return false 
+    else 
+      return true 
+    end
+
   end
-  for _, currencyID in ipairs(ckeys) do
-    if SI.db.Tooltip["Currency" .. currencyID] or shouldShowAll then
-      local show
-      for toon, t in cpairs(SI.db.Toons, true) do
+
+  for _, currencyID in ipairs(currencies) do
+    -- if currency tracked or showall pressed
+    if SI.db.Tooltip["Currency" .. currencyID] 
+    or (shouldShowOnAll(currencyID) and shouldShowAll)
+    then
+      local currencyRowLabel
+      for charKey, charStore in cpairs(SI.db.Toons, true) do
         -- ci.name, ci.amount, ci.earnedThisWeek, ci.weeklyMax, ci.totalMax, ci.relatedItemCount
-        local ci = t.currency and t.currency[currencyID]
-        if ci then
-          local gotThisWeek = ((ci.earnedThisWeek or 0) > 0 and (ci.weeklyMax or 0) > 0)
-          local gotSome = ((ci.relatedItemCount or 0) > 0) or ((ci.amount or 0) > 0)
-          if gotThisWeek or (gotSome and shouldShowAll) then
-            addColumns(characterColumns, toon, tooltip)
+        ---@type SavedInstances.Toon.Currency
+        local currencyInfo = charStore.currency 
+          and charStore.currency[currencyID];
+        
+        if currencyInfo then
+          local hasWeeklyCurrencyProgress = ((currencyInfo.earnedThisWeek or 0) > 0)
+            and ((currencyInfo.weeklyMax or 0) > 0);
+          
+          local hasCurrency = ((currencyInfo.relatedItemCount or 0) > 0) 
+            or ((currencyInfo.amount or 0) > 0);
+          
+          -- allocate column for a character to show currency info in tooltip
+          -- any weekly currencies will force create a column
+          -- any currency will create a column if the user has chosen to show all currencies
+          if hasWeeklyCurrencyProgress 
+          or (hasCurrency and shouldShowAll)
+          then
+            addColumns(characterColumns, charKey, tooltip)
           end
-          if not show and (gotThisWeek or gotSome) and characterColumns[toon .. 1] then
+          -- only create a row entry when: 
+          -- the row entry didnt already exists,
+          -- and there is a currency to show for this character,
+          -- and this character has a column allocated for it.
+          if not currencyRowLabel 
+          and (hasWeeklyCurrencyProgress or hasCurrency) 
+          and characterColumns[charKey .. 1] 
+          then
             local name, icon;
             if SI.isClassicEra then
               icon = GetItemIcon(currencyID)
@@ -5581,18 +5623,17 @@ function SI:ShowTooltip(anchor)
               name = Currency.OverrideName[currencyID] or data.name
               icon = Currency.OverrideTexture[currencyID] or data.iconFileID
             end
-            assert(icon and name, "info not found for currency", currencyID, icon, name)
-            show = format(" \124T%s:0\124t%s", icon, name)
+            currencyRowLabel = format(" \124T%s:0\124t%s", icon or "134400", name or "")
           end
         end
       end
       local currLine
-      if show then
+      if currencyRowLabel then
         if SI.db.Tooltip.CategorySpaces and firstcurrency then
           addsep()
           firstcurrency = false
         end
-        currLine = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(show))
+        currLine = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(currencyRowLabel))
         tooltip:SetLineScript(currLine, "OnMouseDown", OpenCurrency)
         tooltip:SetCellScript(currLine, 1, "OnEnter", hoverTooltip.ShowCurrencySummary, currencyID)
         tooltip:SetCellScript(currLine, 1, "OnLeave", CloseTooltips)

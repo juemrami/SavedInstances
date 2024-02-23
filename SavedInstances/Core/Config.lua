@@ -784,6 +784,16 @@ function Config:BuildAceConfigOptions()
             order = 50,
             name = L["Sort by currency name"],
           },
+          CurrencyHideUntracked = {
+            type = "toggle",
+            order = 55,
+            width = "double",
+            -- when enabling option for retail/wotlk-
+            -- dont forget to remove the check in `shouldShowOnAll` as well.
+            hidden = not SI.isClassicEra,
+            name = L['Hide untracked currencies'],
+            desc = L['If enabled, untracked currencies will not be shown in the tooltip when the "Show All" modifier is held'],
+          },
           CurrencyHeader = {
             order = 60,
             type = "header",
@@ -1133,20 +1143,24 @@ function Config:BuildAceConfigOptions()
       }
     end  
   end
-  
-  local headerOffset = savedOptions.args.Currency.args.CurrencyHeader.order
+  local currencyOptions = savedOptions.args.Currency.args
+  local headerOffset = currencyOptions.CurrencyHeader.order
+
   for idx, currencyID in ipairs(SI.validCurrencies) do
+    
+    -- currently only classic era currencies had these headers to visually split currencies up.
+    -- might add into wotlk/cata later
     local category = SI.currencyCategories[currencyID]
-    local categoryHeader = savedOptions.args.Currency.args["CurrencyCategory"..category]
-    if category and 
-    not categoryHeader then
+    local categoryHeader = currencyOptions["CurrencyCategory"..category]
+    if category and not categoryHeader then
       categoryHeader = {
         type = "header",
         order = headerOffset+idx,
         name = category,
       }
-      savedOptions.args.Currency.args["CurrencyCategory"..category] = categoryHeader
+      currencyOptions["CurrencyCategory"..category] = categoryHeader
     end
+
     local name
     local icon ---@type string|number?
     if SI.isClassicEra then
@@ -1160,7 +1174,7 @@ function Config:BuildAceConfigOptions()
 
     if name and icon then
       icon = "\124T"..icon..":13:13:0:-1:64:64:10:54:10:54\124t "
-      savedOptions.args.Currency.args["Currency"..currencyID] = {
+      currencyOptions["Currency"..currencyID] = {
         type = "toggle",
         order = headerOffset+idx,
         name = icon..name,
@@ -1188,13 +1202,14 @@ function Config:RegisterAddonSettingsPanel()
   local AceDialog = LibStub("AceConfigDialog-3.0")
   
   local _ = nil;
-  _, addonSettingsCategoryID = AceDialog:AddToBlizOptions(namespace, nil, nil, "General")
-  AceDialog:AddToBlizOptions(namespace, L["Quest progresses"], namespace, "Progress")
-  AceDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency")
-  AceDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators")
-  AceDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances")
+  _, addonSettingsCategoryID = AceDialog:AddToBlizOptions(namespace, nil, nil, "General");
+  AceDialog:AddToBlizOptions(namespace, L["Quest progresses"], namespace, "Progress");
+  AceDialog:AddToBlizOptions(namespace, CURRENCY, namespace, "Currency");
+  AceDialog:AddToBlizOptions(namespace, L["Indicators"], namespace, "Indicators");
+  AceDialog:AddToBlizOptions(namespace, L["Instances"], namespace, "Instances");
   _, characterSettingsElementID = AceDialog
-          :AddToBlizOptions(namespace, L["Characters"], namespace, "Characters")
+    :AddToBlizOptions(namespace, L["Characters"], namespace, "Characters");
+
 end
 function Config:ReopenConfigDisplay(frame)
   assert(addonSettingsCategoryID, 
