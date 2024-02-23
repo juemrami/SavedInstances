@@ -2,11 +2,11 @@
   
 # SavedInstances
 
-[![Build Status](https://github.com/SavedInstances/SavedInstances/workflows/CI/badge.svg)](https://github.com/SavedInstances/SavedInstances/actions?workflow=CI)
+<!-- [![Build Status](https://github.com/SavedInstances/SavedInstances/workflows/CI/badge.svg)](https://github.com/SavedInstances/SavedInstances/actions?workflow=CI) -->
 
 </div>
 
-An addon that keeps track of the instance/raid lockouts saved against your characters, and related currencies and cooldowns. 
+An addon that keeps track of the instance/raid lockouts saved against your characters, and related currencies and cooldowns. Supports all official versions of the game.
 
 ## Features:
 
