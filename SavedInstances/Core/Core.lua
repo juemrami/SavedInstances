@@ -55,7 +55,9 @@ local MAX_LFG_DUNGEON_ID = (SI.isClassicEra and 161)
   or (SI.isWrath and 2497) 
   or 2530; -- assume retail 
 
-local maxcol = 4 -- max columns per player+instance (in tooltip)
+-- max columns per player+instance (in tooltip)
+local MAX_COL_PER_CHARACTER = 4;
+
 local table, math, bit, string, pairs, ipairs, unpack, strsplit, time, type, wipe, tonumber, select, strsub =
   table, math, bit, string, pairs, ipairs, unpack, strsplit, time, type, wipe, tonumber, select, strsub
 local GetSavedInstanceInfo, GetNumSavedInstances, GetSavedInstanceChatLink, GetLFGDungeonNumEncounters, GetLFGDungeonEncounterInfo, GetNumRandomDungeons, GetLFGRandomDungeonInfo, GetLFGDungeonInfo, GetLFGDungeonRewards, GetTime, UnitIsUnit, GetInstanceInfo, IsInInstance, SecondsToTime, GetNumGroupMembers, UnitAura =
@@ -4589,7 +4591,7 @@ local columnCache = { [true] = {} , [false] = {} }
 
 local function addColumns(columns, toon, tooltip)
   ---@cast tooltip QTip
-  for c = 1, maxcol do
+  for c = 1, MAX_COL_PER_CHARACTER do
     columns[toon..c] = columns[toon..c] or tooltip:AddColumn("CENTER")
   end
   columnCache[isShowAllPressed()][toon] = true
@@ -4639,6 +4641,7 @@ function SI:ShowTooltip(anchor)
   end
   -- allocating columns for characters
   for toon, _ in cpairs(SI.db.Toons) do
+    SI:Debug("Adding columns for %s",toon)
     if SI.db.Toons[toon].Show == "always" or
       (toon == SI.thisToon and SI.db.Tooltip.SelfAlways) then
       addColumns(characterColumns, toon, tooltip)
@@ -4797,11 +4800,11 @@ function SI:ShowTooltip(anchor)
           end
         end 
         local base = 1
-        local span = maxcol
+        local span = MAX_COL_PER_CHARACTER
         if showcnt > 1 then
           span = 1
         end
-        if showcnt > maxcol then
+        if showcnt > MAX_COL_PER_CHARACTER then
           SI:BugReport("Column overflow! showcnt="..showcnt)
         end
         for diffID = 1, MAX_DIFFICULTY_ID do
@@ -4934,7 +4937,7 @@ function SI:ShowTooltip(anchor)
             holidayinst[instance] = row
           end
           local tstr = SecondsToTime(d.Expires - time(), false, false, 1)
-          tooltip:SetCell(row, characterColumns[toon..1], ClassColorise(t.Class,tstr),nil,"CENTER",maxcol)
+          tooltip:SetCell(row, characterColumns[toon..1], ClassColorise(t.Class,tstr),nil,"CENTER",MAX_COL_PER_CHARACTER)
           tooltip:SetLineScript(row, "OnMouseDown", OpenLFD, info.lfgDungeonID)
         end
       end
@@ -4970,14 +4973,14 @@ function SI:ShowTooltip(anchor)
       if d1 > 0 and (d2 < 0 or shouldShowAll) then
         local col = characterColumns[toon..1]
         local tstr = SecondsToTime(d1, false, false, 1)
-        tooltip:SetCell(cd1, col, ClassColorise(t.Class,tstr), nil, "CENTER",maxcol)
+        tooltip:SetCell(cd1, col, ClassColorise(t.Class,tstr), nil, "CENTER",MAX_COL_PER_CHARACTER)
         tooltip:SetCellScript(cd1, col, "OnEnter", hoverTooltip.ShowSpellIDTooltip, {toon,-1,tstr})
         tooltip:SetCellScript(cd1, col, "OnLeave", CloseTooltips)
       end
       if d2 > 0 then
         local col = characterColumns[toon..1]
         local tstr = SecondsToTime(d2, false, false, 1)
-        tooltip:SetCell(cd2, col, ClassColorise(t.Class,tstr), nil, "CENTER",maxcol)
+        tooltip:SetCell(cd2, col, ClassColorise(t.Class,tstr), nil, "CENTER",MAX_COL_PER_CHARACTER)
         tooltip:SetCellScript(cd2, col, "OnEnter", hoverTooltip.ShowSpellIDTooltip, {toon,71041,tstr})
         tooltip:SetCellScript(cd2, col, "OnLeave", CloseTooltips)
       end
@@ -5003,7 +5006,7 @@ function SI:ShowTooltip(anchor)
       if t.pvpdesert and time() < t.pvpdesert then
         local col = characterColumns[toon..1]
         local tstr = SecondsToTime(t.pvpdesert - time(), false, false, 1)
-        tooltip:SetCell(show --[[@as number]], col, ClassColorise(t.Class,tstr),nil, "CENTER",maxcol)
+        tooltip:SetCell(show --[[@as number]], col, ClassColorise(t.Class,tstr),nil, "CENTER",MAX_COL_PER_CHARACTER)
         tooltip:SetCellScript(show --[[@as number]], col, "OnEnter", hoverTooltip.ShowSpellIDTooltip, {toon,26013,tstr})
         tooltip:SetCellScript(show --[[@as number]], col, "OnLeave", CloseTooltips)
       end
@@ -5047,12 +5050,12 @@ function SI:ShowTooltip(anchor)
       local dc, wc = SI:QuestCount(toon)
       local col = characterColumns[toon..1]
       if showDailies and col and dc > 0 then
-        tooltip:SetCell(showDailies, col, ClassColorise(t.Class,dc),nil, "CENTER",maxcol)
+        tooltip:SetCell(showDailies, col, ClassColorise(t.Class,dc),nil, "CENTER",MAX_COL_PER_CHARACTER)
         tooltip:SetCellScript(showDailies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dc,true})
         tooltip:SetCellScript(showDailies, col, "OnLeave", CloseTooltips)
       end
       if showWeeklies and col and wc > 0 then
-        tooltip:SetCell(showWeeklies, col, ClassColorise(t.Class,wc),nil, "CENTER",maxcol)
+        tooltip:SetCell(showWeeklies, col, ClassColorise(t.Class,wc),nil, "CENTER",MAX_COL_PER_CHARACTER)
         tooltip:SetCellScript(showWeeklies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,wc,false})
         tooltip:SetCellScript(showWeeklies, col, "OnLeave", CloseTooltips)
       end
@@ -5113,7 +5116,7 @@ function SI:ShowTooltip(anchor)
             name = t.MythicKey.name
           end
           ---@cast show number
-          tooltip:SetCell(show, col, "|c" .. t.MythicKey.color .. name .. " (" .. t.MythicKey.level .. ")" .. FONTEND,nil, "CENTER", maxcol)
+          tooltip:SetCell(show, col, "|c" .. t.MythicKey.color .. name .. " (" .. t.MythicKey.level .. ")" .. FONTEND,nil, "CENTER", MAX_COL_PER_CHARACTER)
           tooltip:SetCellScript(show, col, "OnMouseDown", ChatLink, t.MythicKey.link)
         end
       end
@@ -5146,7 +5149,7 @@ function SI:ShowTooltip(anchor)
             name = t.TimewornMythicKey.name
           end
           ---@cast show number
-          tooltip:SetCell(show, col, "|c" .. t.TimewornMythicKey.color .. name .. " (" .. t.TimewornMythicKey.level .. ")" .. FONTEND, nil,"CENTER", maxcol)
+          tooltip:SetCell(show, col, "|c" .. t.TimewornMythicKey.color .. name .. " (" .. t.TimewornMythicKey.level .. ")" .. FONTEND, nil,"CENTER", MAX_COL_PER_CHARACTER)
           tooltip:SetCellScript(show, col, "OnMouseDown", ChatLink, t.TimewornMythicKey.link)
         end
       end
@@ -5188,7 +5191,7 @@ function SI:ShowTooltip(anchor)
           if keydesc ~= "" then
             local col = characterColumns[toon..1]
             ---@cast show number
-            tooltip:SetCell(show, col, keydesc, nil, "CENTER", maxcol)
+            tooltip:SetCell(show, col, keydesc, nil, "CENTER", MAX_COL_PER_CHARACTER)
             tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowMythicPlusTooltip, {toon, keydesc})
             tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
           end
@@ -5313,7 +5316,7 @@ function SI:ShowTooltip(anchor)
                       if col then
                         -- check if current toon is showing
                         -- don't add columns
-                        tooltip:SetCell(line, col, text, nil, "CENTER", maxcol)
+                        tooltip:SetCell(line, col, text, nil, "CENTER", MAX_COL_PER_CHARACTER)
                         tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowEmissaryTooltip, {expansionLevel, day, toon})
                         tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
                       end
@@ -5416,7 +5419,7 @@ function SI:ShowTooltip(anchor)
                   if col then
                     -- check if current toon is showing
                     -- don't add columns
-                    tooltip:SetCell(line, col, text, nil, "CENTER", maxcol)
+                    tooltip:SetCell(line, col, text, nil, "CENTER", MAX_COL_PER_CHARACTER)
                     tooltip:SetCellScript(line, col, "OnEnter", hoverTooltip.ShowCallingTooltip, {day, toon})
                     tooltip:SetCellScript(line, col, "OnLeave", CloseTooltips)
                   end
@@ -5444,7 +5447,7 @@ function SI:ShowTooltip(anchor)
         for toon, t in cpairs(SI.db.Toons, true) do
           if t.Paragon and #t.Paragon > 0 then
             local col = characterColumns[toon..1]
-            tooltip:SetCell(show, col, #t.Paragon, nil, "CENTER", maxcol)
+            tooltip:SetCell(show, col, #t.Paragon, nil, "CENTER", MAX_COL_PER_CHARACTER)
             tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowParagonTooltip, toon)
             tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
           end
@@ -5477,7 +5480,7 @@ function SI:ShowTooltip(anchor)
           if col then
             -- check if current toon is showing
             -- don't add columns
-            tooltip:SetCell(show, col, ClassColorise(t.Class,str), nil, "CENTER", maxcol)
+            tooltip:SetCell(show, col, ClassColorise(t.Class,str), nil, "CENTER", MAX_COL_PER_CHARACTER)
             tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowBonusTooltip, toon)
             tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
           end
@@ -5509,7 +5512,7 @@ function SI:ShowTooltip(anchor)
       if cnt > 0 then
         local col = characterColumns[toon..1]
         ---@cast show number
-        tooltip:SetCell(show, col, ClassColorise(t.Class,cnt), nil,"CENTER",maxcol)
+        tooltip:SetCell(show, col, ClassColorise(t.Class,cnt), nil,"CENTER",MAX_COL_PER_CHARACTER)
         tooltip:SetCellScript(show, col, "OnEnter", hoverTooltip.ShowSkillTooltip, {toon, cnt})
         tooltip:SetCellScript(show, col, "OnLeave", CloseTooltips)
       end
@@ -5532,10 +5535,9 @@ function SI:ShowTooltip(anchor)
         end 
 
         if numCharBuffs > 0 
-        -- hack to only show alts only when theyre already being shown in the tooltip. 
+        -- only show alts only when theyre already being shown in the tooltip. 
         -- (ie column alrdy allocated for them)
-        and (store.Level >= SI.maxLevel 
-        or characterColumns[toon..1] or toon == SI.thisToon)
+        and characterColumns[toon..1]
         then
           if not isCategoryShownYet then
             if shouldAddSep then addsep() end
@@ -5544,7 +5546,7 @@ function SI:ShowTooltip(anchor)
           end
             addColumns(characterColumns, toon, tooltip)
             colIdx = characterColumns[toon..1]
-            tooltip:SetCell(rowIdx, colIdx, ClassColorise(store.Class, numCharBuffs), nil, "CENTER", maxcol)
+            tooltip:SetCell(rowIdx, colIdx, ClassColorise(store.Class, numCharBuffs), nil, "CENTER", MAX_COL_PER_CHARACTER)
             tooltip:SetCellScript(rowIdx, colIdx, "OnEnter",
               function()
                 WorldBuffs:ShowCharacterTooltip(toon)
@@ -5679,7 +5681,7 @@ function SI:ShowTooltip(anchor)
               if not SI.db.Tooltip.CurrencyValueColor then
                 str = ClassColorise(toonData.Class,str)
               end
-              tooltip:SetCell(currLine, col, str, nil, "CENTER", maxcol)
+              tooltip:SetCell(currLine, col, str, nil, "CENTER", MAX_COL_PER_CHARACTER)
               tooltip:SetCellScript(currLine, col, "OnEnter", hoverTooltip.ShowCurrencyTooltip, {toon, currencyID, toonCurrencyInfo})
               tooltip:SetCellScript(currLine, col, "OnLeave", CloseTooltips)
               tooltip:SetCellScript(currLine, col, "OnMouseDown", OpenCurrency)
@@ -5701,7 +5703,7 @@ function SI:ShowTooltip(anchor)
         toonstr = toonstr .. "\n" .. toonserver
       end
       tooltip:SetCell(headLine, col, ClassColorise(SI.db.Toons[toon].Class, toonstr),
-        tooltip:GetHeaderFont(), "CENTER", maxcol)
+        tooltip:GetHeaderFont(), "CENTER", MAX_COL_PER_CHARACTER)
       tooltip:SetCellScript(headLine, col, "OnEnter", hoverTooltip.ShowToonTooltip, toon)
       tooltip:SetCellScript(headLine, col, "OnLeave", CloseTooltips)
     end
@@ -5753,11 +5755,11 @@ function SI:ShowTooltip(anchor)
     tooltip:SetCell(hintLine, hintCol, L["Hover mouse on indicator for details"], nil,"LEFT", tooltip:GetColumnCount())
     if not shouldShowAll then
       hintLine, hintCol = tooltip:AddLine()
-      tooltip:SetCell(hintLine, hintCol, L["Hold Alt to show all data"], nil,"LEFT", math.max(1,tooltip:GetColumnCount()-maxcol))
-      if tooltip:GetColumnCount() < maxcol+1 then
+      tooltip:SetCell(hintLine, hintCol, L["Hold Alt to show all data"], nil,"LEFT", math.max(1,tooltip:GetColumnCount()-MAX_COL_PER_CHARACTER))
+      if tooltip:GetColumnCount() < MAX_COL_PER_CHARACTER+1 then
         tooltip:AddLine("SavedInstances".." version "..SI.version)
       else
-        tooltip:SetCell(hintLine, tooltip:GetColumnCount()-maxcol+1, SI.version,nil, "RIGHT", maxcol)
+        tooltip:SetCell(hintLine, tooltip:GetColumnCount()-MAX_COL_PER_CHARACTER+1, SI.version,nil, "RIGHT", MAX_COL_PER_CHARACTER)
       end
     end
   end
