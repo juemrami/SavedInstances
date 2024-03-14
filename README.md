@@ -12,27 +12,24 @@ An addon that keeps track of the instance/raid lockouts saved against your chara
 
 - Tooltip display shows current lockouts and data for all your characters, and optionally expired lockouts
 - Secondary tooltip (per-lockout) shows lockout details including bosses available, lock status and time remaining, and can be linked into chat
-- Tracks the honor points and conquest points of all your characters, including weekly caps
+- Tracks the honor points and conquest points of all your characters, including weekly caps (Retail)
 - Tracks seals, resources, money, and other useful currencies (configurable display)
-- Tracks weekly World Boss Loots 
-- Tracks LFR bosses looted
-- Tracks holiday boss encounters
+- Tracks weekly World Boss Loots (Retail)
+- Tracks LFR bosses looted (Cata+)
+- Tracks holiday boss encounters (WotLK+)
 - Tracks daily and weekly quests completed for each toon (mouseover entry to list completed quests)
-- Tracks Tanaan Jungle oil bosses: Doomroller, Deathtalon, Terrorfist, Vengeance (mouseover daily quests)
-- Tracks Garrison invasion rewards (mouseover weekly quests)
 - Tracks monthly Darkmoon Faire quests completed for each toon (mouseover weekly quests)
-- Tracks weekly "special" loots on the Timeless Isle and Isle of Thunder (mouseover weekly quests)
-- Tracks trade skill cooldowns (eg. Celestial cloth, Living Steel transmute, Secrets of Draenor, etc.)
+- Tracks trade skill cooldowns (eg. Mooncloth, Saltshaker, Transmutes, etc.)
 - Tracks data for all your characters across servers and factions
 - Can be configured to always show your favorite instances so you can use it like a shopping list
-- Tracks Blizzard's 10 instance per hour per account limit (*)
-- Tracking Bonus Loot Rolls (hidden by default), to help in "gaming" the bad luck protection (*)
+- Tracks Blizzard's instance per hour per account limit (*)
+- Tracking Bonus Loot Rolls (hidden by default), to help in "gaming" the bad luck protection (Retail)(*)
 
-[Bug Reports and Feature Requests](https://github.com/SavedInstances/SavedInstances/issues) (Bug reports in comments might not be seen)
+[Bug Reports and Feature Requests](https://github.com/juemrami/SavedInstances_Classic/issues) (Bug reports in comments might not be seen)
 
-Translators: Apply localization [here](http://www.wowace.com/addons/saved_instances/localization/)
+<!-- Translators: Apply localization [here](http://www.wowace.com/addons/saved_instances/localization/) -->
 
-Featured in [Hearthcast Podcast #181](http://hearthcast.com/download.php?filename=2013-08-14_ep181.mp3)
+<!-- Featured in [Hearthcast Podcast #181](http://hearthcast.com/download.php?filename=2013-08-14_ep181.mp3) -->
 
 ## Known Issues
 

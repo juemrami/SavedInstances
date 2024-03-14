@@ -1,4 +1,5 @@
 ---@alias SavedInstances.Toon.WorldBuffInfo {remainingDuration: number, isBooned: boolean}
+---@alias SavedInstances.Toon.WorldBuffs {number: SavedInstances.Toon.WorldBuffInfo}
 
 ---@type SavedInstances
 local SI, L = unpack(select(2, ...))
@@ -54,9 +55,9 @@ local spellByBoonIdx = {
     [11] = 438536 -- Spark of Inspiration (SoD)
 }
 local CHARGED_BOON_AURA = 349981
--- maps `{[spellID]: BuffInfo}`
----@type table<number, SavedInstances.Toon.WorldBuffInfo>
-local playerBuffStore
+
+---@type SavedInstances.Toon.WorldBuffs 
+local playerBuffStore -- maps `{[spellID]: BuffInfo}`
 
 --- on load, boon is always checked before other buffs so we cant assume is has up to date unbooned buff info.
 ---@return boolean isUpdate
@@ -222,7 +223,7 @@ local lastTooltipUpdate = 0
 local refreshWindow = 60 -- 1min
 ---@param characterKey string
 function Module:ShowCharacterTooltip(characterKey)
-    assert(SI.db, "private reference SavedInstancesDB is not found. Make sure this functions is called after Core.lua has been loaded.")
+    assert(SI.db, "`SI.db` ref to `SavedInstancesDB` is not found. Make sure `ShowCharacterTooltip` is only called after Core.lua.")
     local buffStore = SI.db.Toons[characterKey] and SI.db.Toons[characterKey].WorldBuffs
     if not buffStore then return end
 

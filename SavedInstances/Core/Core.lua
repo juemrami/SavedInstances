@@ -352,6 +352,7 @@ end
 ---@field Calling any? Unused in Wrath/Era.
 ---@field lastboss string? Name of most recently killed boss, formatted `"BossName: DifficultyName"`
 ---@field lastbosstime number? Unix timestamp in seconds of most recently killed boss.
+---@field WorldBuffs SavedInstances.Toon.WorldBuffs? Keyed by spellID. Only used in Classic Era.
 
 --  [instance name] = {
 --    Show: boolean
@@ -3346,6 +3347,7 @@ function SI:toonInit()
       Covenant = SI.isRetail and C_Covenants.GetActiveCovenantID() or nil,
       MythicPlusScore = SI.isRetail and C_ChallengeMode.GetOverallDungeonScore() or nil,
       Warmode = SI.isRetail and C_PvP.IsWarModeDesired() or nil,
+      WorldBuffs = SI.isClassicEra and {} or nil,
     } --[[@as SavedInstances.Toon]]
   end
 
@@ -5531,6 +5533,13 @@ function SI:ShowTooltip(anchor)
     local shouldAddSep = SI.db.Tooltip.CategorySpaces
     local rowIdx 
     local colIdx
+    local shouldShowForCharacter = function(toon)
+      -- show when already allocated(ie already shown)
+      if characterColumns[toon..1] then return true end
+
+      -- or meets show conditions
+      
+    end
     for toon, store in cpairs(SI.db.Toons, true) do
       if store.WorldBuffs and next(store.WorldBuffs) then
         local numCharBuffs = 0
