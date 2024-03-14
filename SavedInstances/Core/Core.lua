@@ -656,6 +656,7 @@ SI.defaultDB = {
     CategorySort = "EXPANSION",
     ShowSoloCategory = SI.isClassicEra and true or false, -- default to true on era
     CurrencyHideUntracked = SI.isClassicEra and true or false,
+    TrackWorldBuffs = SI.isClassicEra and true or nil,
     ShowHints = true,
     ReportResets = true,
     LimitWarn = true,
@@ -3690,7 +3691,7 @@ end
 ---@return number? groupID realm group index (key into `SI.db.RealmMap`)
 ---@return string[]? connectedRealms array of normalized connected realm names.
 function SI:getRealmGroup(realmName)
-  -- returns realm-group-id, { realm1, realm2, ...} for connected realm, or nil,nil for unconnected
+  -- returns realm-group-id, { realm1, realm2, ...} for connected realm, or nil, nil for unconnected
   realmName = realmName:gsub("%s+","")
   local realmMap = SI.db.RealmMap
   local connectedIdx = realmMap and realmMap[realmName]
@@ -4419,17 +4420,20 @@ do
 
       wipe(sortEntries)
       nextIndex = 1
-      for toonFullName, _ in pairs(characters) do 
-        local toonData = SI.db.Toons[toonFullName]
+      for characterKey, _ in pairs(characters) do 
+        local characterStore = SI.db.Toons[characterKey]
         ---@type any, string
-        local _, toonRealm = toonFullName:match('^(.*) [-] (.*)$')
+        local _, toonRealm = characterKey:match('^(.*) [-] (.*)$')
         
-        if toonData 
-        and (toonData.Show ~= "never" 
-          or (toonFullName == SI.thisToon and tooltipOptions.SelfAlways))
+        if characterStore 
+        and (characterStore.Show ~= "never" 
+          or (characterKey == SI.thisToon and tooltipOptions.SelfAlways))
         and (not tooltipOptions.ServerOnly
           or realmName == toonRealm
-          or realmGroupIdx == SI:getRealmGroup(toonRealm))
+          or (
+            realmGroupIdx -- 2 diff servers without realmgroups both use `nil`
+            and realmGroupIdx == SI:getRealmGroup(toonRealm))
+          )
         then
           -- Maps a sorted index to either the realm group index for `SI.db.RealmMap`, or a specific realm name
           ---@type {[number]: string|number}
@@ -4438,7 +4442,7 @@ do
           sortedPosition = 1
 
           if tooltipOptions.SelfFirst then
-            if toonFullName == SI.thisToon then
+            if characterKey == SI.thisToon then
               -- make the whole realm group 1 the (next) highest sorted position
               sortedRealmOrGroup[sortedPosition] = 1
             else
@@ -4487,11 +4491,11 @@ do
           --- whats the point of all the work above if we might just gonna overWrite it with order?
     
           -- insert the order of the current character into the next highest position
-          sortedRealmOrGroup[sortedPosition] = toonData.Order
+          sortedRealmOrGroup[sortedPosition] = characterStore.Order
           sortedPosition = sortedPosition + 1
           
           -- insert the current character Name into the next highest position
-          sortedRealmOrGroup[sortedPosition] = toonFullName
+          sortedRealmOrGroup[sortedPosition] = characterKey
           sortEntries[nextIndex] = sortedRealmOrGroup
           nextIndex = nextIndex + 1
         end
@@ -4595,6 +4599,7 @@ local function addColumns(columns, toon, tooltip)
     columns[toon..c] = columns[toon..c] or tooltip:AddColumn("CENTER")
   end
   columnCache[isShowAllPressed()][toon] = true
+  -- SI:Debug("Allocated columns for %s | stack: %s ",toon, debugstack())
 end
 SI.scaleCache = {}
 
@@ -4641,7 +4646,6 @@ function SI:ShowTooltip(anchor)
   end
   -- allocating columns for characters
   for toon, _ in cpairs(SI.db.Toons) do
-    SI:Debug("Adding columns for %s",toon)
     if SI.db.Toons[toon].Show == "always" or
       (toon == SI.thisToon and SI.db.Tooltip.SelfAlways) then
       addColumns(characterColumns, toon, tooltip)
@@ -5489,6 +5493,7 @@ function SI:ShowTooltip(anchor)
     end
   end
 
+  -- Trade/Proffession CD's
   if SI.db.Tooltip.TrackSkills or shouldShowAll then
     ---@type boolean|number
     local show = false
@@ -5518,7 +5523,6 @@ function SI:ShowTooltip(anchor)
       end
     end
   end
-
   -- World Buffs
   if (SI.db.Tooltip.TrackWorldBuffs or shouldShowAll)
   and WorldBuffs 
@@ -5537,11 +5541,12 @@ function SI:ShowTooltip(anchor)
         if numCharBuffs > 0 
         -- only show alts only when theyre already being shown in the tooltip. 
         -- (ie column alrdy allocated for them)
-        and characterColumns[toon..1]
+        and (characterColumns[toon..1] or shouldShowAll)
         then
           if not isCategoryShownYet then
             if shouldAddSep then addsep() end
-            rowIdx = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["World Buffs"]))
+            rowIdx = tooltip
+              :AddLine(LIGHTYELLOW:WrapTextInColorCode(L["World Buffs"]));
             isCategoryShownYet = true
           end
             addColumns(characterColumns, toon, tooltip)
@@ -5556,12 +5561,11 @@ function SI:ShowTooltip(anchor)
       end
     end
   end
-
+  -- Currencies 
   local firstcurrency = true
   local currencies = SI.db.Tooltip.CurrencySortName 
     and SI.currencySorted 
     or SI.validCurrencies;
-
   local shouldShowOnAll = function(currencyID)
     -- retain old functionality in clients with C_Currency api
     if not SI.isClassicEra then
@@ -5580,7 +5584,6 @@ function SI:ShowTooltip(anchor)
     end
 
   end
-
   for _, currencyID in ipairs(currencies) do
     -- if currency tracked or showall pressed
     if SI.db.Tooltip["Currency" .. currencyID] 
@@ -5692,7 +5695,7 @@ function SI:ShowTooltip(anchor)
     end
   end
 
-  -- toon names
+  -- Add toon names to allocated column
   for toondiff, col in pairs(characterColumns) do
     local toon = strsub(toondiff, 1, #toondiff-1)
     local diff = strsub(toondiff, #toondiff, #toondiff)
@@ -5708,7 +5711,9 @@ function SI:ShowTooltip(anchor)
       tooltip:SetCellScript(headLine, col, "OnLeave", CloseTooltips)
     end
   end
-  -- we now know enough to put in the category names where necessary
+
+
+  -- we now know enough to put in the category row names where necessary
   if SI.db.Tooltip.ShowCategories then
     for category, row in pairs(categoryrow) do
       if (categories > 1 or SI.db.Tooltip.ShowSoloCategory) and categoryshown[category] then

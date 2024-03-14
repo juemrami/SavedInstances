@@ -122,3 +122,8 @@ function SI:ClassColorToon(toon)
     or strsplit(' ', toon) --remove server name
   return SI:ClassColorString(toon, str)
 end
+
+-- Returns in order (specified by `ConnectedRealm`, `SelfAlways`, ServerOnly`, `SelfFirst`, `ServerSort`)
+function SI:IterateTrackedCharacters()
+  return SI.cpairs(SI.db.Toons)
+end
