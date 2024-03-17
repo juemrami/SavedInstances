@@ -35,7 +35,6 @@ local QTip = SI.Libs.QTip
 local db
 
 -- https://wago.tools/db2/Difficulty?sort[ID]=desc
---- current max dungeonID's,
 -- retail (@10.2.5):  205 = "Follower"
 -- wotlk (@3.4.3): 194 = "25 Player (Heroic)"
 -- classic (@1.15.0): 207 = "Normal" 
@@ -50,7 +49,7 @@ local MAX_DIFFICULTY_ID = (SI.isRetail and 205)
 -- retail client:  2530 = "Dawn of the Infinite: Murozond's Rise"
 -- wotlk client: 2497 = "The Oculus"
 -- classic client: 131 = "Winterspring", 
--- Classic db table is missing AQ20/40 which are 160 and 161,
+-- note: 1.15.1 Classic db table is missing Naxx/AQ20/40 which are 159, 160 and 161.
 local MAX_LFG_DUNGEON_ID = (SI.isClassicEra and 161)
   or (SI.isWrath and 2497) 
   or 2530; -- assume retail 
@@ -1726,7 +1725,7 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
     if SI.locale == 'deDE' then
       lfgName = "Niedergang"
     end
-  elseif dungeonID == 160 and not lfgName then 
+  elseif dungeonID == 160 and not lfgName then -- GetLFGDungeonInfo() is `nil` in 1.15.1 client for next 3 dungeons
     -- Ruins of Ahn'Qiraj
     lfgName = GetRealZoneText(509)
     expansionLevel = 0
@@ -1743,6 +1742,15 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
     recLevel = 60
     maxPlayers = 40
     isHoliday = false
+    difficultyID = 9 -- 40m
+    typeID = 2
+    subtypeID = LFG_SUBTYPEID_RAID
+  elseif dungeonID == 159 and not lfgName then
+    -- Naxx
+    lfgName = GetRealZoneText(533)
+    expansionLevel = 0
+    recLevel = 60
+    maxPlayers = 40
     difficultyID = 9 -- 40m
     typeID = 2
     subtypeID = LFG_SUBTYPEID_RAID
