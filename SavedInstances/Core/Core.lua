@@ -682,12 +682,13 @@ SI.defaultDB = {
     Currency2650 = true, -- Emerald Dewdrop
     Currency2651 = true, -- Seedbloom
     Currency2777 = true, -- Dream Infusion
-    Currency2796 = true, -- Renascent Dream
-    Currency2706 = true, -- Whelpling's Dreaming Crest
-    Currency2707 = true, -- Drake's Dreaming Crest
-    Currency2708 = true, -- Wyrm's Dreaming Crest
-    Currency2709 = true, -- Aspect's Dreaming Crest
-    Currency2774 = true, -- Loot Spark of Dreams
+    Currency2912 = true, -- Renascent Awakening
+    Currency2806 = true, -- Whelpling's Awakened Crest
+    Currency2807 = true, -- Drake's Awakened Crest
+    Currency2809 = true, -- Wyrm's Awakened Crest
+    Currency2812 = true, -- Aspect's Awakened Crest
+    Currency2800 = true, -- 10.2.6 Professions - Personal Tracker - S4 Spark Drops (Hidden)
+    Currency3010 = true, -- 10.2.6 Rewards - Personal Tracker - S4 Dinar Drops (Hidden)
     CurrencyMax = false,
     CurrencyEarned = true,
     CurrencySortName = false,
@@ -810,18 +811,18 @@ end
 ---Gets the color for a currency. Uses differnet colors to indicate progress towards a cap if `max` is defined.
 ---@param current number?
 ---@param max number?
+---@param alt number?
 ---@return string
-local function CurrencyColor(current, max)
+local function CurrencyColor(current, max, alt)
   current = current or 0
   local sAmt = SI:formatNumber(current)
   if max == nil or max == 0 then
     return sAmt
   end
   if SI.db.Tooltip.CurrencyValueColor then
-    local pct = current / max
+    local pct = alt and (alt / max) or (current / max)
     ---@type ColorMixin
     local color = GREEN
-
     if pct >= 1 then
       color = RED
     elseif pct >= 0.75 then
@@ -5682,7 +5683,7 @@ function SI:ShowTooltip(anchor)
               if (toonCurrencyInfo.weeklyMax or 0) > 0 then
                 str = earned.." ("..CurrencyColor(toonCurrencyInfo.earnedThisWeek,toonCurrencyInfo.weeklyMax)..weeklymax..")"
               elseif (toonCurrencyInfo.amount or 0) > 0 or (toonCurrencyInfo.totalEarned or 0) > 0 then
-                str = CurrencyColor(toonCurrencyInfo.amount,toonCurrencyInfo.totalMax)..totalmax
+                str = CurrencyColor(toonCurrencyInfo.amount, toonCurrencyInfo.totalMax, toonCurrencyInfo.totalEarned) .. totalmax
               end
               if SI.specialCurrency[currencyID] and SI.specialCurrency[currencyID].relatedItem then
                 if SI.specialCurrency[currencyID].relatedItem.holdingMax then
