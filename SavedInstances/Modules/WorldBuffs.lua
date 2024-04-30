@@ -165,16 +165,25 @@ local function UpdatePlayerChronoboonData()
             end
         end
     else
-        local boonAuraDurations = auraData and auraData.points or {}
+        local boonAuraDurations = auraData and auraData.points
+        local dmfSpellIdx = 9
         for i = 1, #boonAuraDurations do
-            -- workaround for dmf spellId/duration entries
-            local spellID = i ~= 8 
-                and spellByBoonIdx[i]
-                or boonAuraDurations[9];
-                
+            local spellID = spellByBoonIdx[i] 
+            local spellName = GetSpellInfo(spellID)
             local timeLeft = boonAuraDurations[i]
             
-            if spellID and spellID ~= 0 then
+            if i == dmfSpellIdx then -- dmf edge case
+                spellID = boonAuraDurations[dmfSpellIdx]
+                if spellID ~= 0 then -- if a dmf buff is found, its ID is non-zero
+                    spellName = GetSpellInfo(spellID)
+                    -- buff duration is stored in the previous index to the spellID
+                    timeLeft = boonAuraDurations[dmfSpellIdx - 1]
+                end
+            end
+            
+            -- `0` for dmf entry @ index 8
+            assert(spellName or spellID == 0, "GetSpellInfo returned `nil` for spellID", spellID, i , boonAuraDurations)
+            if spellName then
                 if timeLeft <= 0 then
                     -- when no duration is found on the boon simply mark as unbooned
                     -- `updateCurrentPlayerBuffInfo` will cleanup the store entry-
