@@ -144,6 +144,10 @@ local allCurrencies = {
 -- list of category names followed by currencyIds for that category
 ---@type (string|number)[]
 local classicCurrencies = {
+  -- Misc
+  BINDING_HEADER_MISC,
+  212160, -- Chronoboon Displacer
+  
   -- Holiday Currency
   CALENDAR_FILTER_WEEKLY_HOLIDAYS,
   19182, -- Darkmoon Faire Prize Ticket
