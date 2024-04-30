@@ -94,6 +94,7 @@ if SI.isClassicEra then
     [1]   = "D1", -- Dungeons
     [197] = "R0", -- 10m (SoD)
     [148] = "R1", -- 20m
+    [215] = "R1", -- 20m (SoD)
     [9]   = "R2", -- 40m
   }
   local diffRemap = {
@@ -196,7 +197,7 @@ function SI:GetDifficultyName(instance,diff,info)
     local category = DIFFICULTY_CATEGORY_MAP[diff]
     local displayStr = DIFFICULTY_STRINGS[category]
     if not (category and displayStr) then
-      SI:BugReport(
+      SI:Debug(
         ("No category or display string found for difficulty: %s | category: %s | displayStr: %s")
           :format(diff, category or "nil", displayStr or "nil")
       )
