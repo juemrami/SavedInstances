@@ -2269,8 +2269,8 @@ local QuestIsWeekly = QuestIsWeekly or function()
     return wrathWeeklies[id] or false
   elseif SI.isSoD then 
     sodWeeklies = sodWeeklies or {
-      [79090] = true, -- Repelling Invaders
-      [79098] = true -- Clear the Forest
+      [79090] = false, -- Repelling Invaders (changed to daily)
+      [79098] = false -- Clear the Forest (changed to daily)
     }
     return sodWeeklies[id] or false
   end

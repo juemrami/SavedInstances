@@ -810,7 +810,7 @@ local presets = {
     fullObjective = false,
   },
   -- Classic
-  --- Ashenvale Weeklies (S0D)
+  --- Ashenvale ~~Weeklies~~ Dailies (S0D)
   ---@type SingleQuestEntry
   ["ashenvale-alliance-weeky"] = {
     type = "single",
@@ -818,7 +818,7 @@ local presets = {
     index = 1,
     questID = 79090, -- Repelling Invaders (alliance)
     name = GetTitleForQuestID(79090) or L["Repelling Invaders"],
-    reset = "weekly",
+    reset = "daily",
     persists = false,
     fullObjective = true,
     disabled = (not SI.isSoD) or (englishToQuestFactionID[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_ALLIANCE)
@@ -830,7 +830,7 @@ local presets = {
     index = 1,
     questID = 79098, -- Clear the Forest (horde)
     name = GetTitleForQuestID(79098) or L["Clear the Forest"],
-    reset = "weekly",
+    reset = "daily",
     persists = false,
     fullObjective = true,
     disabled = (not SI.isSoD) or (englishToQuestFactionID[UnitFactionGroup("player")] ~= LE_QUEST_FACTION_HORDE)   
