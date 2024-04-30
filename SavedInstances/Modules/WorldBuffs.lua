@@ -82,7 +82,7 @@ local spellByBoonIdx = {
     [12] = 446695, -- Fervor of the Temple Explorer (SoD)
 }
 local CHARGED_BOON_AURA = 349981
-local UNCHARGED_BOON_ID = 212160
+local UNCHARGED_BOON_ITEM_ID = 212160
 
 --- local reference to world buff saved var table for current player. This is assumed to be loaded on `OnEnable` and shouldn't `nil` when referenced in any execution after module initialization.
 ---@type SavedInstances.Toon.WorldBuffs 
@@ -115,7 +115,7 @@ local function UpdatePlayerBoonCooldown()
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info
-                and info.itemID == UNCHARGED_BOON_ID
+                and info.itemID == UNCHARGED_BOON_ITEM_ID
             then
                 -- when the bag item has no cooldown game will return 0, 0
                 local lastCast, duration, _ = GetContainerItemCooldown(bag, slot)
@@ -389,7 +389,8 @@ function Module:ShowCharacterTooltip(characterKey)
 
         local timeLeft = buffStore.boonCooldownExpiry 
         and buffStore.boonCooldownExpiry - GetServerTime();
-        local boonCdStr = L["Chronoboon Cooldown"]; -- non localized fallback
+        local boonCdStr = C_Item.GetItemInfo(UNCHARGED_BOON_ITEM_ID) 
+            or L["Chronoboon Cooldown"]; -- non localized fallback
         local cooldownText
         if timeLeft and timeLeft > 0 then
             cooldownText = WrapTextInColorCode(
