@@ -317,7 +317,8 @@
         "HIGHLIGHT_FONT_COLOR",
         "GREEN_FONT_COLOR",
         "NORMAL_FONT_COLOR",
-        "RAID_INSTANCE_EXPIRES_EXPIRED"
+        "RAID_INSTANCE_EXPIRES_EXPIRED",
+        "READY"
     ],
     "diagnostics.disable": [
         "deprecated",

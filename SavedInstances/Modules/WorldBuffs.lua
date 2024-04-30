@@ -1,5 +1,5 @@
----@alias SavedInstances.Toon.WorldBuffInfo {remainingDuration: number, isBooned: boolean}
----@alias SavedInstances.Toon.WorldBuffs {number: SavedInstances.Toon.WorldBuffInfo}
+---@alias SavedInstances.Toon.WorldBuffs.Info {remainingDuration: number, isBooned: boolean}
+---@alias SavedInstances.Toon.WorldBuffs {number: SavedInstances.Toon.WorldBuffs.Info, boonCooldownExpiry: number?}
 
 ---@type SavedInstances
 local SI, L = unpack(select(2, ...))
@@ -7,14 +7,23 @@ local SI, L = unpack(select(2, ...))
 local Module = SI:NewModule('WorldBuffs', "AceEvent-3.0")
 local TooltipModule = SI:GetModule('Tooltip') --[[@as TooltipModule]]
 
+-- Global API
+local GetContainerItemCooldown = C_Container.GetContainerItemCooldown
+local RED = RED_FONT_COLOR ---@type ColorMixin
+local GREEN = PURE_GREEN_COLOR ---@type ColorMixin
+local YELLOW = NORMAL_FONT_COLOR ---@type ColorMixin
+local READY = READY ---@type "Ready"
+
+-- No API to get world buffs or distinguish between world buffs and other buffs
+-- There are 2 spells for each buff, one is for the original buff gained from the npc on drop, and the other is for the buff gained from self when unbooning buffs.
+-- This was added on 04/2021 i think SoM
 local trackedBuffs = {
-    -- Legacy
-    16609,  -- Warchief's Blessing (unused after 04/2021 [tbc])
-    22888,  -- Rallying Cry of the Dragonslayer (unused after 04/2021)
-    24425,  -- Spirit of Zandalar (unused after 04/2021)
     -- Classic
+    16609,  -- Warchief's Blessing (on drop)
     355366, -- Warchief's Blessing
+    22888,  -- Rallying Cry of the Dragonslayer (on drop)
     355363, -- Rallying Cry of the Dragonslayer
+    24425,  -- Spirit of Zandalar (on drop)
     355365, -- Spirit of Zandalar
     23768,  -- Sayge's Dark Fortune of Damage
     23769,  -- Sayge's Dark Fortune of Resistance
@@ -29,12 +38,13 @@ local trackedBuffs = {
     22820,  -- "Slip'kik's Savvy",
     15366,  -- Songflower Serenade
     -- SoD Exclusive
-    431111, -- Boon of Blackfathom (unused after P1)
-    438537, -- Spark of Inspiration (unused. maybe its for after P2)
-    430947, -- Boon of Blackfathom 
-    438536  -- Spark of Inspiration
+    431111, -- Boon of Blackfathom (from boon)
+    430947, -- Boon of Blackfathom  (from drop)
+    438537, -- Spark of Inspiration (from boon)
+    438536, -- Spark of Inspiration (from drop)
+    446698, -- Fervor of the Temple Explorer (from boon)
+    446695, -- Fervor of the Temple Explorer (from drop)
 }
-
 local TRACKED_BUFFS_LOOKUP = {}
 for _, spellId in ipairs(trackedBuffs) do
     TRACKED_BUFFS_LOOKUP[spellId] = true
@@ -52,17 +62,79 @@ local spellByBoonIdx = {
     [8] = 0, -- Duration of Sayges Fortune Buff
     [9] = 0, -- SpellID of Sayges Fortune Buff
     [10] = 430947, -- Boon of Blackfathom (SoD)
-    [11] = 438536 -- Spark of Inspiration (SoD)
+    [11] = 438537, -- Spark of Inspiration (SoD)
+    [12] = 446695, -- Fervor of the Temple Explorer (SoD)
 }
 local CHARGED_BOON_AURA = 349981
+local UNCHARGED_BOON_ID = 212160
 
+--- local reference to world buff saved var table for current player. This is assumed to be loaded on `OnEnable` and shouldn't `nil` when referenced in any execution after module initialization.
 ---@type SavedInstances.Toon.WorldBuffs 
-local playerBuffStore -- maps `{[spellID]: BuffInfo}`
+local playerBuffStore -- maps `{[spellID]: BuffInfo, [boonCD]: duration }`
 
---- on load, boon is always checked before other buffs so we cant assume is has up to date unbooned buff info.
+---------------------------------------------------
+-- Helper Functions
+---------------------------------------------------
+
+-- todo move to time.lua
+local timeFormatter = CreateFromMixins(SecondsFormatterMixin)
+timeFormatter:Init(nil, nil, true)
+timeFormatter:SetDesiredUnitCount(1)
+timeFormatter:SetStripIntervalWhitespace(true)
+---@diagnostic disable-next-line: duplicate-set-field
+function timeFormatter:GetMaxInterval()
+    return SecondsFormatter.Interval.Minutes
+end
+
+local secondsToMinutes = function(seconds)
+     return timeFormatter
+        :Format(seconds, SecondsFormatter.Abbreviation.OneLetter)
+end
+
+local function UpdatePlayerBoonCooldown()
+    -- search bag for items
+    local currentTime = GetTime()
+    local currentTimestamp = GetServerTime()
+    for bag = 0, 4 do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info
+                and info.itemID == UNCHARGED_BOON_ID
+            then
+                -- when the bag item has no cooldown game will return 0, 0
+                local lastCast, duration, _ = GetContainerItemCooldown(bag, slot)
+                -- DevTools_Dump({GetContainerItemCooldown(bag, slot)})
+                local timeSinceLastCast = currentTime - lastCast
+                if lastCast > 0 then
+                    local castTimestamp = currentTimestamp - timeSinceLastCast;
+                    local expiry = castTimestamp + duration
+                    SI:Debug("Remaining boon cooldown for %s - %s", SI.thisToon, secondsToMinutes(expiry - currentTimestamp))
+                    if expiry > 0 then
+                        playerBuffStore.boonCooldownExpiry = expiry -- update
+                    else
+                    -- if no cd and previous cd has expired, clear it
+                    -- game might return 0, 0 falsely, verify if expired.
+                        if playerBuffStore.boonCooldownExpiry and 
+                        playerBuffStore.boonCooldownExpiry > currentTimestamp 
+                        then
+                            SI:Debug("Boon is still on cooldown until %s", date("%m/%d/%y %H:%M:%S", playerBuffStore.boonCooldownExpiry))
+                            break; -- skip update
+                        end
+                        SI:Debug("Boon is off cooldown")
+                        playerBuffStore.boonCooldownExpiry = 0 -- update
+                    end
+                end
+                return;
+            end
+        end
+    end
+end
+
+--- on `Enable`, the boon is checked before single wbuffs, so we cant assume is has up to date unbooned buff info.
 ---@return boolean isUpdate
-local function updatePlayerSuspendedBuffs()
+local function UpdatePlayerChronoboonData()
     assert(playerBuffStore, "ensure saved variables are loaded before calling this function")
+    UpdatePlayerBoonCooldown() -- update boon item cooldown
     local auraData = C_UnitAuras.GetPlayerAuraBySpellID(CHARGED_BOON_AURA)
     local isUpdate = false
     if not auraData then
@@ -81,9 +153,9 @@ local function updatePlayerSuspendedBuffs()
             local spellID = i ~= 8 
                 and spellByBoonIdx[i]
                 or boonAuraDurations[9];
-
-            local timeLeft = boonAuraDurations[i]
                 
+            local timeLeft = boonAuraDurations[i]
+            
             if spellID and spellID ~= 0 then
                 if timeLeft <= 0 then
                     -- when no duration is found on the boon simply mark as unbooned
@@ -104,9 +176,10 @@ local function updatePlayerSuspendedBuffs()
     end
     return isUpdate
 end
+
 ---@param spellID number
 ---@return boolean isUpdate
-local function updatePlayerBuffBySpell(spellID)
+local function UpdatePlayerBuffBySpell(spellID)
     assert(playerBuffStore, "ensure saved variables are loaded before calling this function")
         local auraData = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
         local timeLeft = auraData and (auraData.expirationTime - GetTime()) or 0
@@ -125,14 +198,22 @@ local function updatePlayerBuffBySpell(spellID)
     end
     return true
 end
+
 -- update all tracked buffs in and out of chronoboon
--- (reflected in the store)
-local function UpdateAllCurrentPlayerBuffs()
-    updatePlayerSuspendedBuffs()
+-- as well as the boon cooldown.
+-- and reflected all info in the playerBuffStore
+local function UpdatePlayerWorldBuffs()
+    -- checking the boon checks the boon cd as well
+    UpdatePlayerChronoboonData()
     for _, spellID in ipairs(trackedBuffs) do
-       updatePlayerBuffBySpell(spellID)
+       UpdatePlayerBuffBySpell(spellID)
     end
 end
+
+---------------------------------------------------
+-- Module Functions
+---------------------------------------------------
+
 function Module:OnEnable()
     assert(SavedInstancesDB) -- ensure saved variables are loaded
     local characterDB = SavedInstancesDB.Toons
@@ -142,20 +223,39 @@ function Module:OnEnable()
         characterDB[SI.thisToon].WorldBuffs = playerBuffStore
     end
     self:RegisterEvent("UNIT_AURA")
-    
     ---cache results used by `GetCharacterWorldBuffs` (name and icon)
     ---@type table<string, WorldBuffsModule.CachedBuffs>
     self.characterWorldBuffCache = {}
-    
-    UpdateAllCurrentPlayerBuffs()
+    UpdatePlayerWorldBuffs()
 end
 
 -- when UNIT_AURA fires for an aura that has been removed
 -- querying the aura data with `GetAuraDataByAuraInstanceID` return nil 
--- likely because the player no longer has the aura. Whic make sense-
+-- likely because the player no longer has the aura. Which make sense-
 -- but this means we cant get the spellID from the auraData, so we have to track it ourselves.
 ---@type table<number, number> `instanceID => spellID`
 local trackedAuraInstanceIDs = {}
+
+---Processes aura data, updates player buff store if valid aura is found. Returns true if the aura data was valid.
+---@param auraData table|{spellId: number}?
+---@return boolean isValid
+local ValidateAuraData = function(auraData)
+    local spellID = auraData and auraData.spellId
+    local isValid = false
+    local isUpdate = false
+    if spellID == CHARGED_BOON_AURA then
+        isUpdate = UpdatePlayerChronoboonData()
+        isValid = true
+    elseif spellID and TRACKED_BUFFS_LOOKUP[spellID] then
+        isUpdate = UpdatePlayerBuffBySpell(spellID)
+        isValid = true
+    end
+    if isUpdate then
+        -- invalidate `characterWorldBuffCache` for player
+        Module.characterWorldBuffCache[SI.thisToon] = nil
+    end
+    return isValid
+end
 
 function Module:UNIT_AURA(event, unit, info)
     if unit == "player" then
@@ -164,24 +264,8 @@ function Module:UNIT_AURA(event, unit, info)
         local removedIDs = info.removedAuraInstanceIDs or {}
         local isUpdate = false
 
-        local updateAuraIfValid = function(auraData)
-            local spellID = auraData and auraData.spellId
-            local isValid = false
-            if spellID == CHARGED_BOON_AURA then
-                isUpdate = updatePlayerSuspendedBuffs()
-                isValid = true
-            elseif TRACKED_BUFFS_LOOKUP[spellID] then
-                isUpdate = updatePlayerBuffBySpell(spellID)
-                isValid = true
-            end
-            if isUpdate then
-                -- invalidate `characterWorldBuffCache` for player
-                self.characterWorldBuffCache[SI.thisToon] = nil
-            end
-            return isValid
-        end
         for _, auraData in ipairs(addedAuraData) do
-            if updateAuraIfValid(auraData) then
+            if ValidateAuraData(auraData) then
                 ---@cast auraData AuraData
                 trackedAuraInstanceIDs[auraData.auraInstanceID] = auraData.spellId
             end
@@ -189,15 +273,15 @@ function Module:UNIT_AURA(event, unit, info)
         
         for _, instanceID in ipairs(updatedIDs) do
             local auraData = C_UnitAuras.GetAuraDataByAuraInstanceID("player", instanceID)
-            if updateAuraIfValid(auraData) then
-                ---@cast auraData {}
+            if ValidateAuraData(auraData) then
+                ---@cast auraData AuraData
                 trackedAuraInstanceIDs[instanceID] = auraData.spellId
             end
         end
         for _, instanceID in ipairs(removedIDs) do
             local spellID = trackedAuraInstanceIDs[instanceID]
             if spellID then
-                updateAuraIfValid({ spellId = spellID })
+                ValidateAuraData({ spellId = spellID })
                 trackedAuraInstanceIDs[instanceID] = nil
             end
         end
@@ -205,22 +289,8 @@ function Module:UNIT_AURA(event, unit, info)
     end
 end
 
--- todo move to time.lua
-local timeFormatter = CreateFromMixins(SecondsFormatterMixin)
-timeFormatter:Init(nil, nil, true)
-timeFormatter:SetDesiredUnitCount(1)
-timeFormatter:SetStripIntervalWhitespace(true)
----@diagnostic disable-next-line: duplicate-set-field
-function timeFormatter:GetMaxInterval()
-    return SecondsFormatter.Interval.Minutes
-end
-local secondsToMinutes = function(seconds)
-     return timeFormatter
-        :Format(seconds, SecondsFormatter.Abbreviation.OneLetter)
-end
-
 local lastTooltipUpdate = 0
-local refreshWindow = 60 -- 1min
+local refreshWindow = 30 -- 30sec
 ---@param characterKey string
 function Module:ShowCharacterTooltip(characterKey)
     assert(SI.db, "`SI.db` ref to `SavedInstancesDB` is not found. Make sure `ShowCharacterTooltip` is only called after Core.lua.")
@@ -228,11 +298,12 @@ function Module:ShowCharacterTooltip(characterKey)
     if not buffStore then return end
 
     -- hack to update tooltip when hovering over the current player's cell to keep duration up to date
-    if characterKey == SI.thisToon 
-    and GetTime() - lastTooltipUpdate > refreshWindow 
-    then
-        UpdateAllCurrentPlayerBuffs()
-        lastTooltipUpdate = GetTime()
+    if characterKey == SI.thisToon then
+        UpdatePlayerBoonCooldown()
+        if GetTime() - lastTooltipUpdate > refreshWindow then
+            UpdatePlayerWorldBuffs()
+            lastTooltipUpdate = GetTime()
+        end
     end
 
     ---@type QTip create the tooltip when hovering over a character cell
@@ -240,20 +311,26 @@ function Module:ShowCharacterTooltip(characterKey)
     local linesToAdd = {} ---@type string[]
     local count = 0
     local boonIndicator = "\124TInterface\\COMMON\\Indicator-Green:0:0:0:2\124t"
-    for spellID, buff in pairs(buffStore) do
-        local remaining = buff.remainingDuration
-        assert(remaining > 0, "World buffs with no remaining duration should be removed from the characters saved variable store")
-        local name, _, icon = GetSpellInfo(spellID)
-        local displayStr = "\124T%s:14:14\124t %s %s";
-        local remainingStr = (buff.isBooned 
-            and PURE_GREEN_COLOR 
-            or NORMAL_FONT_COLOR):WrapTextInColorCode(
-                ("(%s)"):format(secondsToMinutes(remaining)));
-        local line = displayStr
-            :format(icon, name, remainingStr)
+    -- local _ = "\124TInterface\\COMMON\\Indicator-Red:0:0:0:2\124t"
+    -- local _ = "\124TInterface\\COMMON\\Indicator-Yellow:0:0:0:2\124t"
 
-        tinsert(linesToAdd, line)
-        count = count + 1
+    for spellID, buff in pairs(buffStore) do
+        if type(buff) == "table" then
+            local remaining = buff.remainingDuration
+            assert(remaining > 0, "World buffs with no remaining duration should be removed from the characters saved variable store")
+            local name, _, icon = GetSpellInfo(spellID)
+            local displayStr = "\124T%s:14:14\124t %s: %s%s";
+            local remainingStr = (buff.isBooned 
+                and GREEN
+                or YELLOW):WrapTextInColorCode(
+                    ("(%s)"):format(secondsToMinutes(remaining)));
+            local boonIndicator = buff.isBooned and boonIndicator or ""
+            local line = displayStr
+                :format(icon, name, remainingStr, boonIndicator)
+
+            tinsert(linesToAdd, line)
+            count = count + 1
+        end
     end
     if #linesToAdd > 0 then
         local coloredName = SI:ClassColorString(characterKey)
@@ -264,12 +341,36 @@ function Module:ShowCharacterTooltip(characterKey)
         for _, lineText in ipairs(linesToAdd) do
             hovertip:SetCell(hovertip:AddLine(), 1, lineText, nil,"LEFT", 3)
         end
+
+        local timeLeft = buffStore.boonCooldownExpiry 
+        and buffStore.boonCooldownExpiry - GetServerTime();
+        local boonCdStr = L["Chronoboon Cooldown"]; -- non localized fallback
+        local cooldownText
+        if timeLeft and timeLeft > 0 then
+            cooldownText = WrapTextInColorCode(
+                secondsToMinutes(timeLeft), YELLOW:GenerateHexColor()
+            );
+        elseif timeLeft then 
+            cooldownText = WrapTextInColorCode(
+                READY, GREEN:GenerateHexColor()
+            );
+        end
+
+        if cooldownText then
+            local displayText = ("%s: %s")
+                :format(boonCdStr, cooldownText);
+            hovertip:AddSeparator(2,0,0,0,0)
+            local cooldownLine = hovertip:AddLine()
+            hovertip:SetCell(cooldownLine, 1, displayText, "GameTooltipTextSmall", "LEFT", hovertip:GetColumnCount())
+        end
+
         -- add hint for booned indicator
         if SI.db.Tooltip.ShowHints then
             hovertip:AddSeparator(5,0,0,0,0)
             local atlasLine = hovertip:AddLine()
             hovertip:SetCell(atlasLine, 1, boonIndicator..GetSpellInfo(CHARGED_BOON_AURA),"GameTooltipTextSmall", "LEFT", hovertip:GetColumnCount())
         end
+        
         hovertip:Show()
     end
 end
@@ -286,14 +387,16 @@ function Module:GetCharacterWorldBuffs(characterKey)
         SI:Debug("(re)Building world buff cache for %s", characterKey)
         local buffStore = SI.db.Toons[characterKey].WorldBuffs or {}
         local buffArray = {}
-        for spellID, buff in ipairs(buffStore) do
-            tinsert(buffArray, {
-                spellID = spellID,
-                name = GetSpellInfo(spellID),
-                icon = GetSpellTexture(spellID),
-                remaining = buff.remainingDuration,
-                isBooned = buff.isBooned
-            }) 
+        for spellID, buff in pairs(buffStore) do
+            if type(spellID) == "number" then 
+                tinsert(buffArray, {
+                    spellID = spellID,
+                    name = GetSpellInfo(spellID),
+                    icon = GetSpellTexture(spellID),
+                    remaining = buff.remainingDuration,
+                    isBooned = buff.isBooned
+                })
+            end
         end
         self.characterWorldBuffCache[characterKey] = buffArray
     end

@@ -5551,8 +5551,11 @@ function SI:ShowTooltip(anchor)
     for toon, store in cpairs(SI.db.Toons, true) do
       if store.WorldBuffs and next(store.WorldBuffs) then
         local numCharBuffs = 0
-        for _ in pairs(store.WorldBuffs) do
-          numCharBuffs = numCharBuffs + 1
+        for spellID, _ in pairs(store.WorldBuffs) do
+          -- check for number (spellID) since the boonCooldownExpiry is now also stored in the table
+          if type(spellID) == "number" then
+            numCharBuffs = numCharBuffs + 1
+          end
         end 
 
         if numCharBuffs > 0 
