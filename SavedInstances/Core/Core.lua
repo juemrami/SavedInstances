@@ -40,7 +40,7 @@ local db
 -- classic (@1.15.0): 207 = "Normal" 
 local MAX_DIFFICULTY_ID = (SI.isRetail and 205) 
   or (SI.isWrath and 194) 
-  or (SI.isClassicEra and 207)
+  or (SI.isClassicEra and 215)
   or 33; -- old defualt
 
 
