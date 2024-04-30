@@ -1,5 +1,5 @@
 ---@alias SavedInstances.Toon.WorldBuffs.Info {remainingDuration: number, isBooned: boolean}
----@alias SavedInstances.Toon.WorldBuffs {number: SavedInstances.Toon.WorldBuffs.Info, boonCooldownExpiry: number?}
+---@alias SavedInstances.Toon.WorldBuffs {string: SavedInstances.Toon.WorldBuffs.Info, boonCooldownExpiry: number?}
 
 ---@type SavedInstances
 local SI, L = unpack(select(2, ...))
@@ -45,12 +45,28 @@ local trackedBuffs = {
     446698, -- Fervor of the Temple Explorer (from boon)
     446695, -- Fervor of the Temple Explorer (from drop)
 }
-local TRACKED_BUFFS_LOOKUP = {}
+
+---Maps buff names to spellIDs, and spellID to `true` for any associated spellIDs.
+---@type {string: number[], number: boolean}
+local WORLD_BUFF_LOOKUP = {}
 for _, spellId in ipairs(trackedBuffs) do
-    TRACKED_BUFFS_LOOKUP[spellId] = true
+    -- Name -> spellIDs
+    local localizedSpellName = GetSpellInfo(spellId)
+    assert(localizedSpellName, "GetSpellInfo returned `nil` for spellID", spellId)
+    local existing = WORLD_BUFF_LOOKUP[localizedSpellName]
+    if not existing then 
+        WORLD_BUFF_LOOKUP[localizedSpellName] = { spellId }
+    else
+        ---@cast existing number[]
+        tinsert(existing, spellId)
+    end
+    -- spellID -> isTracked
+    WORLD_BUFF_LOOKUP[spellId] = true
 end
 
 -- see https://warcraft.wiki.gg/wiki/API_UnitAura#Details
+--- any of the associated spellIDs can be used here, 
+-- spellID just used to pull localized data to display.
 local spellByBoonIdx = {
     [1] = 22817, -- Fengus' Ferocity
     [2] = 22818, -- Mol'dar's Moxie
@@ -70,7 +86,7 @@ local UNCHARGED_BOON_ID = 212160
 
 --- local reference to world buff saved var table for current player. This is assumed to be loaded on `OnEnable` and shouldn't `nil` when referenced in any execution after module initialization.
 ---@type SavedInstances.Toon.WorldBuffs 
-local playerBuffStore -- maps `{[spellID]: BuffInfo, [boonCD]: duration }`
+local playerBuffStore -- maps `{[spellName]: BuffInfo, [boonCD]: duration }`
 
 ---------------------------------------------------
 -- Helper Functions
@@ -138,11 +154,13 @@ local function UpdatePlayerChronoboonData()
     local auraData = C_UnitAuras.GetPlayerAuraBySpellID(CHARGED_BOON_AURA)
     local isUpdate = false
     if not auraData then
-        SI:Debug("No aura data found for Charged Chrono Boon")
+        SI:Debug("No suspended world buffs for player.")
         -- assume nothing is booned. Sometimes the game does not return the aura data right away and this can be falsely empty.
-        for _, spellID in pairs(trackedBuffs) do
-            if playerBuffStore[spellID] then
-                playerBuffStore[spellID].isBooned = false
+        for buffName, _ in pairs(WORLD_BUFF_LOOKUP) do
+            if type(buffName) == "string" 
+                and playerBuffStore[buffName] 
+            then
+                playerBuffStore[buffName].isBooned = false
                 isUpdate = true
             end
         end
@@ -161,13 +179,13 @@ local function UpdatePlayerChronoboonData()
                     -- when no duration is found on the boon simply mark as unbooned
                     -- `updateCurrentPlayerBuffInfo` will cleanup the store entry-
                     -- when: the buff is not found on player and not seen as booned in the store.
-                    if playerBuffStore[spellID] then
+                    if playerBuffStore[spellName] then
                         SI:Debug("No suspended data found for world buff: %s", GetSpellLink(spellID))
-                        playerBuffStore[spellID].isBooned = false
+                        playerBuffStore[spellName].isBooned = false
                         isUpdate = true
                     end
                 else
-                    playerBuffStore[spellID] = { remainingDuration = timeLeft, isBooned = true }
+                    playerBuffStore[spellName] = { remainingDuration = timeLeft, isBooned = true }
                     SI:Debug("Suspended Buff Found: %s (%sm)", GetSpellLink(spellID), floor(SecondsToMinutes(timeLeft)))
                     isUpdate = true
                 end
@@ -177,26 +195,38 @@ local function UpdatePlayerChronoboonData()
     return isUpdate
 end
 
----@param spellID number
+---@param spellName string
 ---@return boolean isUpdate
-local function UpdatePlayerBuffBySpell(spellID)
+local function UpdatePlayerBuffBySpell(spellName)
     assert(playerBuffStore, "ensure saved variables are loaded before calling this function")
+    assert(type(spellName) == "string", "spellName must be a string")
+
+    local spellIDs = WORLD_BUFF_LOOKUP[spellName] or {} 
+    ---@cast spellIDs number[]
+    local isUpdate = false
+    for _, spellID in ipairs(spellIDs) do
         local auraData = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
         local timeLeft = auraData and (auraData.expirationTime - GetTime()) or 0
         if timeLeft <= 0 then
             -- clear store when buff is not found, iff its not booned
-            if playerBuffStore[spellID] and not playerBuffStore[spellID].isBooned then
-                playerBuffStore[spellID] = nil
-                SI:Debug("No data found for world buff: %s", GetSpellLink(spellID))
+            if playerBuffStore[spellName] and not playerBuffStore[spellName].isBooned then
+                playerBuffStore[spellName] = nil
+                SI:Debug("No data found for world buff: %s", GetSpellLink(spellName))
+                isUpdate = true
             end
+
+            -- hack: previously used spellID as key. Cleanup any old entries
+            -- remove this in a future release. (0.1.2)
+            if playerBuffStore[spellID] then playerBuffStore[spellID] = nil end
         else
-        SI:Debug("Unsuspended Buff Found: %s (%sm)", GetSpellLink(spellID), floor(SecondsToMinutes(timeLeft)))
-        playerBuffStore[spellID] = { 
-            remainingDuration = timeLeft, 
-            isBooned = false 
-        }
+            SI:Debug("Unsuspended Buff Found: %s (%sm)", GetSpellLink(spellName), floor(SecondsToMinutes(timeLeft)))
+            playerBuffStore[spellName] = { remainingDuration = timeLeft, isBooned = false }
+            isUpdate = true
+        end
+        -- return on first match for spell (some spells have multiple spellIDs)
+        if isUpdate then return true end
     end
-    return true
+    return false
 end
 
 -- update all tracked buffs in and out of chronoboon
@@ -205,8 +235,10 @@ end
 local function UpdatePlayerWorldBuffs()
     -- checking the boon checks the boon cd as well
     UpdatePlayerChronoboonData()
-    for _, spellID in ipairs(trackedBuffs) do
-       UpdatePlayerBuffBySpell(spellID)
+    for spellName, _ in pairs(WORLD_BUFF_LOOKUP) do
+        if type(spellName) == "string" then
+            UpdatePlayerBuffBySpell(spellName)
+        end
     end
 end
 
@@ -246,8 +278,8 @@ local ValidateAuraData = function(auraData)
     if spellID == CHARGED_BOON_AURA then
         isUpdate = UpdatePlayerChronoboonData()
         isValid = true
-    elseif spellID and TRACKED_BUFFS_LOOKUP[spellID] then
-        isUpdate = UpdatePlayerBuffBySpell(spellID)
+    elseif spellID and WORLD_BUFF_LOOKUP[spellID] then
+        isUpdate = UpdatePlayerBuffBySpell(GetSpellInfo(spellID))
         isValid = true
     end
     if isUpdate then
@@ -314,11 +346,15 @@ function Module:ShowCharacterTooltip(characterKey)
     -- local _ = "\124TInterface\\COMMON\\Indicator-Red:0:0:0:2\124t"
     -- local _ = "\124TInterface\\COMMON\\Indicator-Yellow:0:0:0:2\124t"
 
-    for spellID, buff in pairs(buffStore) do
+    for spellName, buff in pairs(buffStore) do
         if type(buff) == "table" then
             local remaining = buff.remainingDuration
             assert(remaining > 0, "World buffs with no remaining duration should be removed from the characters saved variable store")
-            local name, _, icon = GetSpellInfo(spellID)
+            
+            -- using spellName for GetSpellInfo returns nil sometimes.
+            local name, _, icon = GetSpellInfo(WORLD_BUFF_LOOKUP[spellName][1]) 
+            assert(name, "GetSpellInfo returned `nil` for spellName", spellName, WORLD_BUFF_LOOKUP[spellName][1])
+            
             local displayStr = "\124T%s:14:14\124t %s: %s%s";
             local remainingStr = (buff.isBooned 
                 and GREEN
