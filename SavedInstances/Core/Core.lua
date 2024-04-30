@@ -1419,8 +1419,8 @@ local function DifficultyString(instanceKey, diffID, toon, isExpired, _kills, _t
     useClassColor = userIndicators[category .. "ClassColor"]
   else useClassColor = defaultIndicators[category .. "ClassColor"] end
 
-  SI:Debug("Generating Difficulty String for %s on %s: %s", instanceKey or 'nil', toon, category)
-  SI:Debug("use ClassColor: %s", useClassColor and "true" or "false")     
+  -- SI:Debug("Generating Difficulty String for %s on %s: %s", instanceKey or 'nil', toon, category)
+  -- SI:Debug("use ClassColor: %s", useClassColor and "true" or "false")     
   if isExpired then
     color = GRAY
   elseif useClassColor then
@@ -3051,7 +3051,7 @@ hoverTooltip.ShowIndicatorTooltip = function (cell, arg, ...)
         end
       else 
         -- no hardcoded list of encounters in the exceptions table (this should be the default for classic since no hyperlink support)
-        SI:Debug("Getting Encounter Info via the `encounter` saved var data for db.Instances[\"%s\"][\"%s\"][%i]",instanceKey, toon, difficultyID)
+        -- SI:Debug("Getting Encounter Info via the `encounter` saved var data for db.Instances[\"%s\"][\"%s\"][%i]",instanceKey, toon, difficultyID)
         if lockoutInfo.encounters then
           for i = 1, #lockoutInfo.encounters do
             local bossName = lockoutInfo.encounters[i].localizedName
