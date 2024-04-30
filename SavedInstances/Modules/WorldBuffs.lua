@@ -361,8 +361,11 @@ function Module:ShowCharacterTooltip(characterKey)
             assert(remaining > 0, "World buffs with no remaining duration should be removed from the characters saved variable store")
             
             -- using spellName for GetSpellInfo returns nil sometimes.
-            local name, _, icon = GetSpellInfo(WORLD_BUFF_LOOKUP[spellName][1]) 
-            assert(name, "GetSpellInfo returned `nil` for spellName", spellName, WORLD_BUFF_LOOKUP[spellName][1])
+            local name, _, icon = GetSpellInfo(spellName) 
+            if not (name and icon) then
+                name, _, icon = GetSpellInfo(WORLD_BUFF_LOOKUP[spellName][1]) 
+            end
+            assert(name or type(spellName) == "number", "GetSpellInfo returned `nil` for spellName", spellName, WORLD_BUFF_LOOKUP)
             
             local displayStr = "\124T%s:14:14\124t %s: %s%s";
             local remainingStr = (buff.isBooned 
