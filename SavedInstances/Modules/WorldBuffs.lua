@@ -410,7 +410,7 @@ function Module:ShowCharacterTooltip(characterKey)
                 :format(boonCdStr, cooldownText);
             hovertip:AddSeparator(2,0,0,0,0)
             local cooldownLine = hovertip:AddLine()
-            hovertip:SetCell(cooldownLine, 1, displayText, "GameTooltipTextSmall", "LEFT", hovertip:GetColumnCount())
+            hovertip:SetCell(cooldownLine, 1, displayText, "GameTooltipText", "LEFT", hovertip:GetColumnCount())
         end
 
         -- add hint for booned indicator
