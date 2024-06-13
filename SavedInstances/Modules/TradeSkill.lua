@@ -13,26 +13,17 @@ local date, ipairs, tonumber, time = date, ipairs, tonumber, time
 local _G = _G
 
 -- WoW API / Variables
-local C_TradeSkillUI_GetAllRecipeIDs
-local C_TradeSkillUI_GetFilteredRecipeIDs 
-local C_TradeSkillUI_GetRecipeCooldown
-local C_TradeSkillUI_IsTradeSkillGuild
-local C_TradeSkillUI_IsTradeSkillLinked
-local C_TradeSkillUI_GetRecipeInfo
-if C_TradeSkillUI then
-  assert(not SI.isClassicEra, 
-  "C_TradeSkillUI is now available in Classic! Open an issue on github to request support."
-  )
-  assert(not SI.isWrath, 
-  "C_TradeSkillUI is now available in Wrath! Open an issue on github to request support."
-  )
-  C_TradeSkillUI_GetAllRecipeIDs = C_TradeSkillUI.GetAllRecipeIDs
-  C_TradeSkillUI_GetFilteredRecipeIDs = C_TradeSkillUI.GetFilteredRecipeIDs
-  C_TradeSkillUI_GetRecipeCooldown = C_TradeSkillUI.GetRecipeCooldown
-  C_TradeSkillUI_IsTradeSkillGuild = C_TradeSkillUI.IsTradeSkillGuild
-  C_TradeSkillUI_IsTradeSkillLinked = C_TradeSkillUI.IsTradeSkillLinked
-  C_TradeSkillUI_GetRecipeInfo = C_TradeSkillUI.GetRecipeInfo
-else -- Wotlk/Era Compatibility
+local C_TradeSkillUI_GetAllRecipeIDs = C_TradeSkillUI.GetAllRecipeIDs
+local C_TradeSkillUI_GetFilteredRecipeIDs = C_TradeSkillUI.GetFilteredRecipeIDs
+local C_TradeSkillUI_GetRecipeCooldown = C_TradeSkillUI.GetRecipeCooldown
+local C_TradeSkillUI_IsTradeSkillGuild = C_TradeSkillUI.IsTradeSkillGuild
+local C_TradeSkillUI_IsTradeSkillLinked = C_TradeSkillUI.IsTradeSkillLinked
+local C_TradeSkillUI_GetRecipeInfo = C_TradeSkillUI.GetRecipeInfo
+
+if SI.isClassicEra then -- Era Compatibility
+  assert(not C_TradeSkillUI_GetRecipeInfo,
+    "C_TradeSkillUI is now supported in Classic! Open an issue on github to request support."
+  );
   ---@type fun(): isLinked: boolean?, linkSource: string?
   C_TradeSkillUI_IsTradeSkillLinked = IsTradeSkillLinked
   C_TradeSkillUI_IsTradeSkillGuild = function() return false end
