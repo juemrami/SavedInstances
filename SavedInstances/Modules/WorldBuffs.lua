@@ -44,6 +44,8 @@ local trackedBuffs = {
     438536, -- Spark of Inspiration (from drop)
     446698, -- Fervor of the Temple Explorer (from boon)
     446695, -- Fervor of the Temple Explorer (from drop)
+    460939, -- Might of Stormwind (from drop)
+    460940  -- Might of Stormwind (from boon)
 }
 
 ---Maps localized buff names to spellIDs, and spellID to `true` for any associated spellIDs.
@@ -65,8 +67,7 @@ for _, spellId in ipairs(trackedBuffs) do
 end
 
 -- see https://warcraft.wiki.gg/wiki/API_UnitAura#Details
---- any of the associated spellIDs can be used here, 
--- spellID just used to pull localized data to display.
+-- note: any of the associated spellIDs can be used here, it's just used to pull localized data to display.
 local spellByBoonIdx = {
     [1] = 22817, -- Fengus' Ferocity
     [2] = 22818, -- Mol'dar's Moxie
@@ -80,6 +81,7 @@ local spellByBoonIdx = {
     [10] = 430947, -- Boon of Blackfathom (SoD)
     [11] = 438537, -- Spark of Inspiration (SoD)
     [12] = 446695, -- Fervor of the Temple Explorer (SoD)
+    [13] = 460939, -- Might of Stormwind (SoD)
 }
 local CHARGED_BOON_AURA = 349981
 local UNCHARGED_BOON_ITEM_ID = 212160
