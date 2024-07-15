@@ -1,4 +1,4 @@
-## Interface: 11502
+## Interface: 11503
 ## Title: SavedInstances
 ## Notes: Tracks Raid and Instance lockouts, daily/weekly quests, currencies, trade cooldowns, and more!
 ## Notes-ruRU: Отслеживает прогресс в рейдах и подземельях, также блокировки мировых боссов для всех Ваших персонажей, также ежедневные/еженедельные квесты, валюту и многое другое!
@@ -27,7 +27,6 @@ Core\Debug.lua
 
 # modules
 # load Quest.lua first, required by Currency.lua
-
 Modules\Quest.lua
 Modules\Currency.lua
 Modules\Progress.lua
@@ -46,4 +45,3 @@ Modules\WorldBuffs.lua
 
 Core\Config.lua
 Core\Core.lua
-
