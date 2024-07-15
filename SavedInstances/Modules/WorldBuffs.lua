@@ -44,6 +44,8 @@ local trackedBuffs = {
     438536, -- Spark of Inspiration (from drop)
     446698, -- Fervor of the Temple Explorer (from boon)
     446695, -- Fervor of the Temple Explorer (from drop)
+    460939, -- Might of Stormwind (from drop)
+    460940  -- Might of Stormwind (from boon)
 }
 
 ---Maps localized buff names to spellIDs, and spellID to `true` for any associated spellIDs.
