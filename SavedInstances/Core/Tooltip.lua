@@ -178,7 +178,9 @@ function Module:ShowDetached()
     end)
     frame:SetScript('OnKeyDown', function(self, key)
       if key == 'ESCAPE' then
-        self:SetPropagateKeyboardInput(false)
+        if not InCombatLockdown() then
+          self:SetPropagateKeyboardInput(false)
+        end
         self:Hide()
       end
     end)
@@ -192,7 +194,9 @@ function Module:ShowDetached()
   end
 
   detachframe:Show()
-  detachframe:SetPropagateKeyboardInput(true)
+  if not InCombatLockdown() then -- todo: use secure frame handler for this
+    detachframe:SetPropagateKeyboardInput(true)
+  end
   SI:ShowTooltip(detachframe)
 end
 
