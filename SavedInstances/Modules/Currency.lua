@@ -146,8 +146,7 @@ local allCurrencies = {
 local classicCurrencies = {
   -- Misc
   BINDING_HEADER_MISC,
-  212160, -- Chronoboon Displacer
-  
+  (SI.isSoD and 212160 or 184937), -- Chronoboon Displacer (SoD/Era specific)
   -- Holiday Currency
   CALENDAR_FILTER_WEEKLY_HOLIDAYS,
   19182, -- Darkmoon Faire Prize Ticket

@@ -84,7 +84,7 @@ local spellByBoonIdx = {
     [13] = 460939, -- Might of Stormwind (SoD)
 }
 local CHARGED_BOON_AURA = 349981
-local UNCHARGED_BOON_ITEM_ID = 212160
+local UNCHARGED_BOON_ITEM_ID = SI.isSoD and 212160 or 184937 -- sod and era have different item ids
 
 --- local reference to world buff saved var table for current player. This is assumed to be loaded on `OnEnable` and shouldn't `nil` when referenced in any execution after module initialization.
 ---@type SavedInstances.Toon.WorldBuffs
@@ -260,15 +260,18 @@ function Module:OnEnable()
     -- validate saved buffs from different locales
     for localizedName, buff in pairs(playerBuffStore) do
         local saved = playerBuffStore[localizedName] 
-        if buff.spellID then
-            playerBuffStore[localizedName] = nil
-            localizedName = GetSpellInfo(buff.spellID)
-            playerBuffStore[localizedName] = saved
-        else
-            local name = GetSpellInfo(localizedName)
-            if not (name) then
-                SI:Debug("Removing buff %s from %s as it is not localized", localizedName, SI.thisToon)
+        -- note: were also tracking boon cooldown (number) in playerBuffStore as `boonCooldownExpiry`
+        if type(buff) == "table" then
+            if buff.spellID then
                 playerBuffStore[localizedName] = nil
+                localizedName = GetSpellInfo(buff.spellID)
+                playerBuffStore[localizedName] = saved
+            else
+                local name = GetSpellInfo(localizedName)
+                if not (name) then
+                    SI:Debug("Removing buff %s from %s as it is not localized", localizedName, SI.thisToon)
+                    playerBuffStore[localizedName] = nil
+                end
             end
         end
         -- hack: previously used spellID as key. Cleanup any old entries, remove this in a future release (0.1.2)
