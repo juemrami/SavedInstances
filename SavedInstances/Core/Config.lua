@@ -1152,7 +1152,7 @@ function Config:BuildAceConfigOptions()
     -- currently only classic era currencies had these headers to visually split currencies up.
     -- might add into wotlk/cata later
     local category = SI.currencyCategories[currencyID]
-    local categoryHeader = currencyOptions["CurrencyCategory"..category]
+    local categoryHeader = category and currencyOptions["CurrencyCategory"..category]
     if category and not categoryHeader then
       categoryHeader = {
         type = "header",

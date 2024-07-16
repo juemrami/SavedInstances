@@ -7,6 +7,8 @@ local SI, L = unpack(select(2, ...))
 local Module = SI:NewModule('WorldBuffs', "AceEvent-3.0")
 local TooltipModule = SI:GetModule('Tooltip') --[[@as TooltipModule]]
 
+if not SI.isClassicEra then return end
+
 -- Global API
 local GetContainerItemCooldown = C_Container.GetContainerItemCooldown
 local RED = RED_FONT_COLOR ---@type ColorMixin
