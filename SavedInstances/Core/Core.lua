@@ -3186,7 +3186,13 @@ hoverTooltip.ShowCurrencyTooltip = function (cell, arg, ...)
     end
     indicatortip:AddLine(format(CURRENCY_TOTAL, "", CurrencyColor(currencyInfo.amount or 0, currencyInfo.totalMax)))
     -- currently, only season currency use totalEarned
-    indicatortip:AddLine(format(CURRENCY_SEASON_TOTAL_MAXIMUM, "", CurrencyColor(currencyInfo.totalEarned or 0, currencyInfo.totalMax), SI:formatNumber(currencyInfo.totalMax)))
+    local CURRENCY_SEASON_TOTAL_MAXIMUM = CURRENCY_SEASON_TOTAL_MAXIMUM
+    if not SI.isRetail then 
+      CURRENCY_SEASON_TOTAL_MAXIMUM = CURRENCY_SEASON_TOTAL:gsub("%%s$", "%%s/%%s");
+    end
+    indicatortip:AddLine(format(CURRENCY_SEASON_TOTAL_MAXIMUM,
+      "", CurrencyColor(currencyInfo.totalEarned or 0, currencyInfo.totalMax), SI:formatNumber(currencyInfo.totalMax))
+    );
   elseif currencyInfo.totalMax and currencyInfo.totalMax > 0 then
     if not spacer then
       indicatortip:AddLine(" ")
@@ -3238,7 +3244,6 @@ hoverTooltip.ShowCurrencySummary = function (cell, arg, ...)
     icon = GetItemIcon(currencyID)
     name = GetItemInfo(currencyID)
   else
-    assert(SI.isRetail, "Using `C_CurrencyInfo` is not valid for classic")
     local data = C_CurrencyInfo.GetCurrencyInfo(currencyID)
     icon = Currency.OverrideTexture[currencyID] or data.iconFileID
     name = Currency.OverrideName[currencyID] or data.name
@@ -5588,10 +5593,7 @@ function SI:ShowTooltip(anchor)
     and SI.currencySorted 
     or SI.validCurrencies;
   local shouldShowOnAll = function(currencyID)
-    -- retain old functionality in clients with C_Currency api
-    if not SI.isClassicEra then
-      return true
-    end
+    if SI.isRetail then return true end -- retain old functionality in retail clients
     assert(
       type(SI.db.Tooltip.CurrencyHideUntracked) == "boolean", 
       "CurrencyHideUntracked must be defined"

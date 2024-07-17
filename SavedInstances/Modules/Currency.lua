@@ -18,6 +18,8 @@ local allCurrencies = {
   81, -- Epicurean Award
   515, -- Darkmoon Prize Ticket
   2588, -- Riders of Azeroth Badge
+  1900, -- Arena Points
+  1901, -- Honor Points
 
   -- Wrath of the Lich King
   61, -- Dalaran Jewelcrafter's Token
@@ -26,18 +28,31 @@ local allCurrencies = {
   102, -- Emblem of Valor
   126, -- Wintergrasp Mark of Honor
   161, -- Stone Keeper's Shard
+  201, -- Venture Coin
   221, -- Emblem of Conquest
   241, -- Champion's Seal
   301, -- Emblem of Triumph
   341, -- Emblem of Frost
-  1900, -- Arena Points
-  1901, -- Honor Points
   2711, -- Defiler's Scourgestone
   2589, -- Sidereal Essence
 
   -- Cataclysm
+  361, -- Illustrious Jewelcrafter's Token
+  384, -- Dwarf Archaeology Fragment
+  385, -- Troll Archaeology Fragment
+  390, -- Conquest Points
   391, -- Tol Barad Commendation
+  395, -- Justice Points
+  396, -- Valor Points
+  397, -- Orc Archaeology Fragment
+  398, -- Draenei Archaeology Fragment
+  399, -- Vrykul Archaeology Fragment
+  400, -- Nerubian Archaeology Fragment
+  401, -- Tol'vir Archaeology Fragment
+  402, -- Chef's Award
   416, -- Mark of the World Tree
+  614, -- Mote of Darkness
+  615, -- Essence of Corrupted Deathwing
 
   -- Mists of Pandaria
   402, -- Ironpaw Token
@@ -140,6 +155,54 @@ local allCurrencies = {
   3010, -- 10.2.6 Rewards - Personal Tracker - S4 Dinar Drops (Hidden)
 }
 
+local cataclysmCurrencies = {
+  -- Misc
+  BINDING_HEADER_MISC,
+  515, -- Darkmoon Prize Ticket
+  -- PvP
+  PLAYER_V_PLAYER,
+  -- 1900, -- Arena Points
+  1901, -- Honor Points
+  390, -- Conquest Points
+
+  
+  -- Wrath of the Lich King
+  EXPANSION_NAME2,
+  61, -- Dalaran Jewelcrafter's Token
+  81, -- Epicurean Award
+  101, -- Emblem of Heroism
+  102, -- Emblem of Valor
+  126, -- Wintergrasp Mark of Honor
+  161, -- Stone Keeper's Shard
+  201, -- Venture Coin
+  221, -- Emblem of Conquest
+  241, -- Champion's Seal
+  301, -- Emblem of Triumph
+  341, -- Emblem of Frost
+  2711, -- Defiler's Scourgestone
+  2589, -- Sidereal Essence
+  
+  -- Cataclysm
+  EXPANSION_NAME3, 
+  361, -- Illustrious Jewelcrafter's Token
+  391, -- Tol Barad Commendation
+  395, -- Justice Points
+  396, -- Valor Points
+  402, -- Chef's Award
+  416, -- Mark of the World Tree
+  614, -- Mote of Darkness
+  615, -- Essence of Corrupted Deathwing
+  
+  -- Archaeology
+  PROFESSIONS_ARCHAEOLOGY,
+  384, -- Dwarf Archaeology Fragment
+  385, -- Troll Archaeology Fragment
+  397, -- Orc Archaeology Fragment
+  398, -- Draenei Archaeology Fragment
+  399, -- Vrykul Archaeology Fragment
+  400, -- Nerubian Archaeology Fragment
+  401, -- Tol'vir Archaeology Fragment
+}
 --- There is no designated currency api in classic. Any "currency" is just a bag item. 
 -- list of category names followed by currencyIds for that category
 ---@type (string|number)[]
@@ -241,20 +304,23 @@ SI.currency = allCurrencies
 local currencySorted = {}
 local validCurrencies = {}
 local currencyCategories = {}
-if SI.isClassicEra then
+if not SI.isRetail then
+  local currencies = SI.isClassicEra and classicCurrencies or cataclysmCurrencies;
   SI:Debug("Classic Era detected using classicCurrencies")
   local lastCategory
-  for _, currencyID in ipairs(classicCurrencies) do
+  for _, currencyID in ipairs(currencies) do
     if type (currencyID) == "string" then
       lastCategory = currencyID
     else
-      table.insert(validCurrencies, currencyID)
-      -- table.insert(allCurrencies, currencyID
-      table.insert(currencySorted, currencyID)
-      currencyCategories[currencyID] = lastCategory
+      if SI.isClassicEra or C_CurrencyInfo_GetCurrencyInfo(currencyID) then
+        table.insert(validCurrencies, currencyID)
+        -- table.insert(allCurrencies, currencyID
+        table.insert(currencySorted, currencyID)
+        currencyCategories[currencyID] = lastCategory
+      end
     end
   end
-else
+else -- retail
   for _, currencyID in ipairs(allCurrencies) do
     -- check for nil currencies 
     if C_CurrencyInfo_GetCurrencyInfo(currencyID) then
