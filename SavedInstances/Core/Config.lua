@@ -791,7 +791,7 @@ function Config:BuildAceConfigOptions()
             width = "double",
             -- when enabling option for retail/wotlk-
             -- dont forget to remove the check in `shouldShowOnAll` as well.
-            hidden = not SI.isClassicEra,
+            hidden = SI.isRetail,
             name = L['Hide untracked currencies'],
             desc = L['If enabled, untracked currencies will not be shown in the tooltip when the "Show All" modifier is held'],
           },
@@ -1144,16 +1144,13 @@ function Config:BuildAceConfigOptions()
       }
     end  
   end
+
   local currencyOptions = savedOptions.args.Currency.args
   local headerOffset = currencyOptions.CurrencyHeader.order
-
   for idx, currencyID in ipairs(SI.validCurrencies) do
-    
-    -- currently only classic era currencies had these headers to visually split currencies up.
-    -- might add into wotlk/cata later
     local category = SI.currencyCategories[currencyID]
     local categoryHeader = category and currencyOptions["CurrencyCategory"..category]
-    if category and not categoryHeader then
+    if category and not categoryHeader then -- only classic era currencies had these headers to visually split currencies up.
       categoryHeader = {
         type = "header",
         order = headerOffset+idx,
