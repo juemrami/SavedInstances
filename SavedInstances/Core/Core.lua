@@ -36,23 +36,23 @@ local db
 
 -- https://wago.tools/db2/Difficulty?sort[ID]=desc
 -- retail (@10.2.5):  205 = "Follower"
--- wotlk (@3.4.3): 194 = "25 Player (Heroic)"
+-- cata (@3.4.3): 194 = "25 Player (Heroic)"
 -- classic (@1.15.0): 207 = "Normal" 
 local MAX_DIFFICULTY_ID = (SI.isRetail and 205) 
-  or (SI.isWrath and 194) 
+  or (SI.isCataclysm and 194) 
   or (SI.isClassicEra and 215)
-  or 33; -- old defualt
+  or 33; -- old default
 
 
 -- see https://wago.tools/db2/LFGDungeons? (filter by build)
 -- highest possible value for an instanceID, 
--- retail client:  2530 = "Dawn of the Infinite: Murozond's Rise"
--- wotlk client: 2497 = "The Oculus"
+-- retail client:  2730 = "Grim Batol"
+-- cata client: 2497 = "The Oculus"
 -- classic client: 131 = "Winterspring", 
 -- note: 1.15.1 Classic db table is missing Naxx/AQ20/40 which are 159, 160 and 161.
 local MAX_LFG_DUNGEON_ID = (SI.isClassicEra and 161)
-  or (SI.isWrath and 2497) 
-  or 2530; -- assume retail 
+  or (SI.isCataclysm and 2497) 
+  or 2730; -- assume retail 
 
 -- max columns per player+instance (in tooltip)
 local MAX_COL_PER_CHARACTER = 4;
@@ -2230,15 +2230,13 @@ function SI:QuestIsDarkmoonMonthly()
   return false
 end
 
-local wrathWeeklies
-local sodWeeklies
 -- The `QuestIsWeekly` API function is not in the WoTLK/Era client (yet)
 -- luckily theres only a limited amount of weeklies so this is a viable workaround
 local QuestIsWeekly = QuestIsWeekly or function()
   local id = GetQuestID()
   if not id then return end -- i think `GetQuestID()` will return 0 instead of nil 
-  if SI.isWrath then
-    wrathWeeklies = wrathWeeklies or {
+  if SI.isCataclysm then
+    local wrathWeeklies = {
       [24579] = true, -- Sartharion Must Die!
       [24580] = true, -- Anub'Rekhan Must Die!
       [24581] = true, -- Noth the Plaguebringer Must Die!
@@ -2268,7 +2266,7 @@ local QuestIsWeekly = QuestIsWeekly or function()
     }
     return wrathWeeklies[id] or false
   elseif SI.isSoD then 
-    sodWeeklies = sodWeeklies or {
+    local sodWeeklies = {
       [79090] = false, -- Repelling Invaders (changed to daily)
       [79098] = false -- Clear the Forest (changed to daily)
     }

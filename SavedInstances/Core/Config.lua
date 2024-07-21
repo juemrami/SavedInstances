@@ -111,7 +111,7 @@ if SI.isClassicEra then
   for k1, k2 in pairs(diffRemap) do
     DIFFICULTY_CATEGORY_MAP[k1] = DIFFICULTY_CATEGORY_MAP[k2]
   end
-elseif SI.isWrath then
+elseif SI.isCataclysm then
   local categoryRemap = {
     D1 = DIFFICULTY_STRINGS.D1,
     D2 = DIFFICULTY_STRINGS.D2,
