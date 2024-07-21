@@ -50,6 +50,7 @@ local build = floor(select(4, GetBuildInfo()) / 10000)
 SI.isRetail = build >= 10
 SI.isClassicEra = build == 1
 SI.isWrath = build == 3
+SI.isCataclysm = build == 4
 SI.isSoD = SI.isClassicEra
     and C_Seasons.HasActiveSeason()
     and C_Seasons.GetActiveSeason() == Enum.SeasonID.SeasonOfDiscovery;
