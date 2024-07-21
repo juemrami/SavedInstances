@@ -2216,18 +2216,20 @@ function SI:UpdateToonData()
   playerData.LastSeen = currentTimestamp
 end
 
+---@return boolean isDMFMonthly `true` is the currently viewed quest (from a quest giver) is a DMF monthly
 function SI:QuestIsDarkmoonMonthly()
-  if QuestIsDaily() then return false end
-  local id = GetQuestID()
-  local questType = id and QuestExceptions[id]
-  if questType and questType ~= "Darkmoon" then return false end -- one-time referral quests
-  for i=1,GetNumRewardCurrencies() do
-    local name,texture,amount = GetQuestCurrencyInfo("reward",i)
-    if texture == 134481 then
-      return true
+    if QuestIsDaily() then return false end
+    local id = GetQuestID()
+    local DARKMOON_TICKET_TEXTURE = 134481
+    local questType = id and QuestExceptions[id]
+    if questType and questType ~= "Darkmoon" then return false end -- one-time referral quests
+    for i = 1, GetNumRewardCurrencies() do
+        local _, texture, _ = GetQuestCurrencyInfo("reward", i)
+        if texture == DARKMOON_TICKET_TEXTURE then
+            return true
+        end
     end
-  end
-  return false
+    return false
 end
 
 -- The `QuestIsWeekly` API function is not in the WoTLK/Era client (yet)
