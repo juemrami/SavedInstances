@@ -535,6 +535,32 @@ local QuestExceptions = {
   [72722] = "Weekly", -- Emissary of War - Mythic Dungeons
   [72721] = "AccountWeekly", -- The Very Best - PvP Pet Battles
   [72720] = "Weekly", -- The Arena Calls - Arena Skirmishes
+
+  -- Cataclsym
+  [29433] = "Darkmoon", -- Test Your Strength
+  [29443] = "Darkmoon", -- A Curious Crystal (Imbued Crystal)
+  [29444] = "Darkmoon", -- An Exotic Egg (Monstrous Egg)
+  [29446] = "Darkmoon", -- A Wondrous Weapon (Ornate Weapon)
+  [29445] = "Darkmoon", -- An Intriguing Grimore (Mysterious Grimore)
+  [29451] = "Darkmoon", -- The Master Strategist (A Treatise on Strategy)
+  [29457] = "Darkmoon", -- The Enemy's Insignia (Captured Insignia)
+  [29458] = "Darkmoon", -- The Captured Journal (Fallen Adventurer's Journal)
+  [29464] = "Darkmoon", -- Tools of Divination (Soothslayer Runes)
+  [29506] = "Darkmoon", -- A Fizzy Fusion (Alchemy)
+  [29507] = "Darkmoon", -- Fun for the Little Ones (Archaeology)
+  [29508] = "Darkmoon", -- Baby Needs Two Pair of Shoes (Blacksmithing)
+  [29509] = "Darkmoon", -- Putting the Crunch in the Frog (Cooking)
+  [29510] = "Darkmoon", -- Putting Trash to Good Use (Enchanting)
+  [29511] = "Darkmoon", -- Talkin Tonks (Engineering)
+  [29512] = "Darkmoon", -- Putting the Carnies Back Together Again (First Aid)
+  [29513] = "Darkmoon", -- Spoilin' for Salty Sea Dogs (Fishing)
+  [29514] = "Darkmoon", -- Herbs for Healing (Herbalism)
+  [29515] = "Darkmoon", -- Writing the Future (Inscription)
+  [29516] = "Darkmoon", -- Keeping the Faire Sparkling (Jewelcrafting)
+  [29517] = "Darkmoon", -- Eyes on the Prizes (Leatherworking)
+  [29518] = "Darkmoon", -- Rearm, Reuse, Recycle (Mining)
+  [29519] = "Darkmoon", -- Tan My Hide (Skinning)
+  [29520] = "Darkmoon", -- Banners, Banners Everywhere! (Tailoring)
 }
 SI.QuestExceptions = QuestExceptions
 
