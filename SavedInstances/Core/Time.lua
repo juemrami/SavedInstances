@@ -26,7 +26,7 @@ do
   end
 end
 
---- returns how many hours the server time is ahead of local time.
+--- returns how many __hours__ the server time is ahead of local time.
 --- To convert local time -> server time: add this value
 --- To convert server time -> local time: subtract this value
 ---@return number offset
@@ -71,21 +71,43 @@ function SI:GetNextWeeklyResetTime()
   return time() + C_DateAndTime_GetSecondsUntilWeeklyReset()
 end
 
-do
-  local darkmoonEnd = { hour=23, min=59 }
-  function SI:GetNextDarkmoonResetTime()
-    -- Darkmoon faire runs from first Sunday of each month to following Saturday
-    -- this function returns an approximate time after the end of the current month's faire
-    local currentCalendarTime = C_DateAndTime_GetCurrentCalendarTime()
-    C_Calendar_SetAbsMonth(currentCalendarTime.month, currentCalendarTime.year)
-    local monthInfo = C_Calendar_GetMonthInfo()
-    local firstWeekday = monthInfo.firstWeekday
-    local firstSunday = ((firstWeekday == 1) and 1) or (9 - firstWeekday)
-    darkmoonEnd.year = monthInfo.year
-    darkmoonEnd.month = monthInfo.month
-    darkmoonEnd.day = firstSunday + 7 -- 1 days of "slop"
+---@return number timestamp time in seconds remaining until the ending of the current or upcoming dmf.
+function SI:GetNextDarkmoonResetTime()
+    local DARKMOON_EVENT_ID = 479
+    local current = C_DateAndTime_GetCurrentCalendarTime()
+    C_Calendar_SetAbsMonth(current.month, current.year)
+    local currentMonth = C_Calendar_GetMonthInfo()
+    local getNextEndTimeTable = function(getUpcoming)
+        local startDay = current.monthDay
+        local stopDay = getUpcoming and currentMonth.numDays or startDay
+        for day = startDay, stopDay do
+            for event = 1, C_Calendar.GetNumDayEvents(0, day) do
+                local dayEvent = C_Calendar.GetDayEvent(0, day, event)
+                if dayEvent.eventID == DARKMOON_EVENT_ID then
+                    return {
+                        year = dayEvent.endTime.year,
+                        day = dayEvent.endTime.monthDay,
+                        month = dayEvent.endTime.month,
+                        hour = dayEvent.endTime.hour,
+                        min = dayEvent.endTime.minute,
+                    }
+                end
+            end
+        end
+        -- previous method as backup | todo: improve DMF detection for Era/SoD.
+        -- Darkmoon faire runs from first Sunday of each month to following Saturday
+        local firstWeekday = currentMonth.firstWeekday
+        local firstSunday = ((firstWeekday == 1) and 1) or (9 - firstWeekday)
+        return {
+            year = currentMonth.year,
+            day = firstSunday + 7, -- 1 days of "slop"
+            month = currentMonth.month,
+            hour = 23,
+            min = 59,
+        }
+    end
+    local darkmoonEnd = getNextEndTimeTable(true)
     -- Unfortunately, DMF boundary ignores daylight savings, and the time of day varies across regions
     -- Report a reset well past end to make sure we don't drop quests early
-    return time(darkmoonEnd) - SI:GetServerOffset() * 3600
-  end
+    return time(darkmoonEnd) - (SI:GetServerOffset() * 3600)
 end
