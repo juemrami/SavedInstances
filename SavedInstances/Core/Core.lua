@@ -644,6 +644,7 @@ SI.defaultDB = {
     CombineLFR = true,
     TrackDailyQuests = true,
     TrackWeeklyQuests = true,
+    TrackDarkmoonQuests = true,
     ShowCategories = false,
     CategorySpaces = false,
     RowHighlight = 0.1,
@@ -863,22 +864,24 @@ function SI:QuestCount(toonName)
   
   local trackedQuests = (useAccountData and SI.db.Quests)
     or (SI.db.Toons[toonName] and SI.db.Toons[toonName].Quests);
-  if not trackedQuests then return 0, 0 end
+  if not trackedQuests then return 0, 0, 0 end
   
   local counts = {
     daily = 0,
     weekly = 0,
+    dmf = 0
   }
   -- ticket 96: GetDailyQuestsCompleted() is unreliable, the response is laggy and it fails to count some quests
   for questID, questInfo in pairs(trackedQuests) do
     if not SI:QuestIgnored(questID) then
       -- original author assumed that if quest was not a "daily" then it was "weekly"
       -- not sure if this holds. depends on the usage of the Toon.Quests and DB.Quests tables.
-      local cooldown = questInfo.isDaily and "daily" or "weekly"
+      local isDMF = QuestExceptions[questID] == "Darkmoon"
+      local cooldown = isDMF and "dmf" or (questInfo.isDaily and "daily" or "weekly")
       counts[cooldown] = counts[cooldown] + 1
     end
   end
-  return counts.daily, counts.weekly
+  return counts.daily, counts.weekly, counts.dmf
 end
 
 -- local addon functions below
@@ -2458,8 +2461,14 @@ hoverTooltip.ShowToonTooltip = function (cell, arg, ...)
 end
 
 hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
-  local toonFullName, questCount, isDaily = unpack(arg)
-  local displayStr = questCount.." "..(isDaily and L["Daily Quests"] or L["Weekly Quests"])
+  local toonFullName, questCount, type = unpack(arg)
+  local isDaily = type == "daily"
+  local isDMF = type == "Darkmoon"
+
+  local displayStr = isDMF and L["Darkmoon Quests"]
+    or (isDaily and L["Daily Quests"] or L["Weekly Quests"]);
+  displayStr = questCount..' '.. displayStr -- prepend quest count
+  
   ---@type SavedInstances.Toon | SavedInstances.DB
   local targetDB = SI.db
   local scopeStr = L["Account"]
@@ -2468,7 +2477,9 @@ hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
     targetDB = SI.db.Toons[toonFullName]
     if not targetDB then return end
     scopeStr = ClassColorise(targetDB.Class, toonFullName)
-    reset = (isDaily and targetDB.DailyResetTime) or (not isDaily and targetDB.WeeklyResetTime)
+    reset = (isDaily and targetDB.DailyResetTime) -- Prio is Daily > DMF (since they have dailies too) > Weekly
+      or (isDMF and SI:GetNextDarkmoonResetTime())
+      or (not isDaily and targetDB.WeeklyResetTime)
   end
   local indicatortip = Tooltip:AcquireIndicatorTip(2, "LEFT","RIGHT")
   indicatortip:AddHeader(scopeStr, displayStr)
@@ -2483,7 +2494,10 @@ hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
   local zonename, id
   for id,qi in pairs(targetDB.Quests) do
     if (not isDaily) == (not qi.isDaily) then
-      if not SI:QuestIgnored(id) then
+      if not SI:QuestIgnored(id)
+      -- only show darkmoon quest in darkmoon category
+      and (not QuestExceptions[id] == "Darkmoon" or isDMF)
+      then
         zonename = qi.Zone and qi.Zone.name or ""
         table.insert(ql,zonename.." # "..id)
       end
@@ -5033,16 +5047,20 @@ function SI:ShowTooltip(anchor)
     end
   end
 
-  do
-    local showDailies, showWeeklies
+  do -- Dailies/Weeklies/DMF
+    local showDailies, showWeeklies, showDMF
     for toonName, t in cpairs(SI.db.Toons, true) do
-      local dailyCount, weeklyCount = SI:QuestCount(toonName)
+      local dailyCount, weeklyCount, dmfCount = SI:QuestCount(toonName)
       if dailyCount > 0 and (SI.db.Tooltip.TrackDailyQuests or shouldShowAll) then
         showDailies = true
         addColumns(characterColumns, toonName, tooltip)
       end
       if weeklyCount > 0 and (SI.db.Tooltip.TrackWeeklyQuests or shouldShowAll) then
         showWeeklies = true
+        addColumns(characterColumns, toonName, tooltip)
+      end
+      if dmfCount > 0 and (SI.db.Tooltip.TrackDarkmoonQuests or shouldShowAll) then
+        showDMF = true
         addColumns(characterColumns, toonName, tooltip)
       end
     end
@@ -5055,29 +5073,42 @@ function SI:ShowTooltip(anchor)
     if showDailies then
       showDailies = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["Daily Quests"] .. (adc > 0 and " ("..adc..")" or "")))
       if adc > 0 then
-        tooltip:SetCellScript(showDailies, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,adc,true})
+        tooltip:SetCellScript(showDailies, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,adc,"daily"})
         tooltip:SetCellScript(showDailies, 1, "OnLeave", CloseTooltips)
       end
     end
     if showWeeklies then
       showWeeklies = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["Weekly Quests"] .. (awc > 0 and " ("..awc..")" or "")))
       if awc > 0 then
-        tooltip:SetCellScript(showWeeklies, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,awc,false})
+        tooltip:SetCellScript(showWeeklies, 1, "OnEnter", hoverTooltip.ShowQuestTooltip, {nil,awc,"weekly"})
         tooltip:SetCellScript(showWeeklies, 1, "OnLeave", CloseTooltips)
       end
     end
     for toon, t in cpairs(SI.db.Toons, true) do
-      local dc, wc = SI:QuestCount(toon)
+      local dc, wc, dmfCount = SI:QuestCount(toon)
       local col = characterColumns[toon..1]
       if showDailies and col and dc > 0 then
         tooltip:SetCell(showDailies, col, ClassColorise(t.Class,dc),nil, "CENTER",MAX_COL_PER_CHARACTER)
-        tooltip:SetCellScript(showDailies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dc,true})
+        tooltip:SetCellScript(showDailies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dc,"daily"})
         tooltip:SetCellScript(showDailies, col, "OnLeave", CloseTooltips)
       end
       if showWeeklies and col and wc > 0 then
         tooltip:SetCell(showWeeklies, col, ClassColorise(t.Class,wc),nil, "CENTER",MAX_COL_PER_CHARACTER)
-        tooltip:SetCellScript(showWeeklies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,wc,false})
+        tooltip:SetCellScript(showWeeklies, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,wc,"weekly"})
         tooltip:SetCellScript(showWeeklies, col, "OnLeave", CloseTooltips)
+      end
+    end
+
+    if showDMF then
+      showDMF = tooltip:AddLine(LIGHTYELLOW:WrapTextInColorCode(L["Darkmoon Quests"]))
+      for toon, t in cpairs(SI.db.Toons, true) do
+        local _, _, dmfCount = SI:QuestCount(toon)
+        local col = characterColumns[toon..1]
+        if col and dmfCount > 0 then
+          tooltip:SetCell(showDMF, col, ClassColorise(t.Class,dmfCount),nil, "CENTER",MAX_COL_PER_CHARACTER)
+          tooltip:SetCellScript(showDMF, col, "OnEnter", hoverTooltip.ShowQuestTooltip, {toon,dmfCount,"Darkmoon"})
+          tooltip:SetCellScript(showDMF, col, "OnLeave", CloseTooltips)
+        end
       end
     end
   end
