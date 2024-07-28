@@ -619,6 +619,11 @@ function Config:BuildAceConfigOptions()
             order = 43.5,
             name = L["Weekly Quests"],
           },
+          TrackDarkmoonQuests = {
+            type = "toggle",
+            order = 43.6,
+            name = L["Darkmoon Quests"],
+          },
           TrackSkills = {
             type = "toggle",
             order = 43.7,
