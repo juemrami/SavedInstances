@@ -623,6 +623,8 @@ function Config:BuildAceConfigOptions()
             type = "toggle",
             order = 43.6,
             name = L["Darkmoon Quests"],
+            disabled = SI.isClassicEra,
+            hidden = SI.isClassicEra,
           },
           TrackSkills = {
             type = "toggle",
