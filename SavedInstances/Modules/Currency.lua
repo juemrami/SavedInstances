@@ -203,13 +203,15 @@ local cataclysmCurrencies = {
   400, -- Nerubian Archaeology Fragment
   401, -- Tol'vir Archaeology Fragment
 }
---- There is no designated currency api in classic. Any "currency" is just a bag item. 
+--- There is no designated currency api in classic. Any "currency" is just a bag item.
 -- list of category names followed by currencyIds for that category
 ---@type (string|number)[]
 local classicCurrencies = {
   -- Misc
   BINDING_HEADER_MISC,
   (SI.isSoD and 212160 or 184937), -- Chronoboon Displacer (SoD/Era specific)
+  (SI.isSoD and 226404 or 0), -- Tarnished Undermine Real (SoD currency)
+
   -- Holiday Currency
   CALENDAR_FILTER_WEEKLY_HOLIDAYS,
   19182, -- Darkmoon Faire Prize Ticket
@@ -311,8 +313,8 @@ if not SI.isRetail then
   for _, currencyID in ipairs(currencies) do
     if type (currencyID) == "string" then
       lastCategory = currencyID
-    else
-      if SI.isClassicEra or C_CurrencyInfo_GetCurrencyInfo(currencyID) then
+    elseif currencyID ~= 0 then
+      if (SI.isClassicEra) or C_CurrencyInfo_GetCurrencyInfo(currencyID) then
         table.insert(validCurrencies, currencyID)
         -- table.insert(allCurrencies, currencyID
         table.insert(currencySorted, currencyID)
