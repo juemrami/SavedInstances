@@ -2496,7 +2496,7 @@ hoverTooltip.ShowQuestTooltip = function (cell, arg, ...)
     if (not isDaily) == (not qi.isDaily) then
       if not SI:QuestIgnored(id)
       -- only show darkmoon quest in darkmoon category
-      and (not QuestExceptions[id] == "Darkmoon" or isDMF)
+      and (not (QuestExceptions[id] == "Darkmoon") or isDMF)
       then
         zonename = qi.Zone and qi.Zone.name or ""
         table.insert(ql,zonename.." # "..id)
