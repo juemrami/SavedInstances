@@ -512,8 +512,8 @@ function Module:UpdatePlayerCurrencies()
     for _, currencyItemID in ipairs(validCurrencies) do
       ---@type SavedInstances.Toon.Currency
       local currencyInfo = playerStore.currency[currencyItemID] or {}
-      currencyInfo.amount = GetItemCount(currencyItemID)
-      currencyInfo.relatedItemCount = GetItemCount(currencyItemID)
+      currencyInfo.amount = GetItemCount(currencyItemID, true)
+      currencyInfo.relatedItemCount = GetItemCount(currencyItemID, true)
       playerStore.currency[currencyItemID] = currencyInfo
     end
   end
