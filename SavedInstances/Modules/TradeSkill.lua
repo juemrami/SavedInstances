@@ -1,7 +1,7 @@
 ---@type SavedInstances
 local SI, L = unpack((select(2, ...)))
 ---@class TradeSkillModule : AceModule , AceEvent-3.0, AceTimer-3.0, AceBucket-3.0
----@field lastCast number? # Unix server timestamp the last detected cast for a tracked trade skill
+---@field castTimestamp number? # Unix server timestamp the last detected cast for a tracked trade skill
 ---@field lastSpellID number? # the spellID of the last detected cast for a tracked trade skill
 ---@field missingWarned table<number, boolean> # [spellID]: `true` if a warning was already issued for the spellID
 ---@field cooldownFound table<number, boolean> # [spellID]: `true` if a cooldown was found for the spellID during the player scan
@@ -19,6 +19,22 @@ local C_TradeSkillUI_GetRecipeCooldown = C_TradeSkillUI.GetRecipeCooldown
 local C_TradeSkillUI_IsTradeSkillGuild = C_TradeSkillUI.IsTradeSkillGuild
 local C_TradeSkillUI_IsTradeSkillLinked = C_TradeSkillUI.IsTradeSkillLinked
 local C_TradeSkillUI_GetRecipeInfo = C_TradeSkillUI.GetRecipeInfo
+
+-- Helper for correcting C_Container.GetItemCooldown AFTER a system reboot
+-- src: https://github.com/Stanzilla/WoWUIBugs/issues/47#issuecomment-710698976
+local function getCastTimestamp(start)
+  -- Before restarting the GetTime() will always be greater than [start]
+  -- After the restart, [start] is technically always bigger because of the 2^32 offset thing
+  local systemTime = GetTime()
+  if start < systemTime then
+      return SI:GetTimestampAfter(start)
+  end
+  local startupTime = time() - systemTime
+  -- just a simplification of: ((2^32) - (start * 1000)) / 1000
+  local cdTime = (2 ^ 32) / 1000 - start
+  local castTimestamp = startupTime - cdTime
+  return castTimestamp
+end
 
 if SI.isClassicEra then -- Era Compatibility
   assert(not C_TradeSkillUI_GetRecipeInfo,
@@ -257,7 +273,7 @@ local trackedTradeCrafts = {
 ---@type table<number, number> [spellID]: itemID
 local trackedItemCrafts = {
   -- Vanilla
-  -- [13399] = 11020 , -- Evergreen Pouch (10m cd)
+  [13399] = 11020 , -- Evergreen Pouch (10m cd)
   [19566] = 15846, -- Salt Shaker
 
   [54710]  = 40768,  -- MOLL-E
@@ -361,13 +377,10 @@ function Module:UNIT_SPELLCAST_SUCCEEDED(_, unit, _, spellID)
   if unit == "player" 
   and (trackedTradeCrafts[spellID] or trackedItemCrafts[spellID])
   then
-    self.lastCast = time()
+    self.castTimestamp = time()
     self.lastSpellID = spellID
     self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-    -- local isOk = self:TryRecordTradeSkill(spellID)
-    -- if not isOk then 
-    --   self:ScheduleTimer(function() self:TryScanPlayerSkill(spellID) end, 0.5)
-    -- end
+
   end
 end
 
@@ -396,8 +409,8 @@ end
 ---@return boolean?
 function Module:TryRecordTradeSkill(spellID, lastCast, cooldown)
   if not spellID then return end
-  local lastCast = lastCast or self.lastCast
-  if not lastCast then
+  local castTimestamp = lastCast or self.castTimestamp
+  if not castTimestamp then
     SI:Debug("No `lastCast` time found for trade skill %s", GetSpellLink(spellID) or spellID)
     return 
   end
@@ -409,32 +422,22 @@ function Module:TryRecordTradeSkill(spellID, lastCast, cooldown)
   local skillKey = spellID 
   local playerStore = SI.db.Toons[SI.thisToon]
   playerStore.Skills = playerStore.Skills or {}
-  
-  local tooltipTitle = spellName
-  local hyperlink = nil
-  local expiry = nil
 
   local recordSkill = function(title, link, expiration)
     local skillStore = playerStore.Skills[skillKey] or {}
-    local change = expiry - (skillStore.Expires or 0)
-    -- updating expiration guess (more than 3 min update lag)
-    if abs(change) > 180 then 
-      SI:Debug("Trade skill CD: "..(hyperlink or tooltipTitle).." ("..spellID..") "..
-      (skillStore.Expires and format("%d",change).." sec" or "(new)")..
-      " Local time: "..date("%c",expiry))
-    end
     skillStore.Title = title
     skillStore.Link = link
     skillStore.Expires = expiration
-    skillStore.lastCast = self.lastCast
+    skillStore.lastCast = self.castTimestamp
     playerStore.Skills[skillKey] = skillStore
   end
 
+  local tooltipTitle = spellName
+  local hyperlink = nil
+  local expiry = nil
   local cooldown = cooldown or getTradeSkillCooldown(spellID)
-  if cooldown 
-  and cooldown > 2 -- might be global cooldowns, #509 
-  then
-    expiry = lastCast + cooldown
+  if cooldown and cooldown > 2 then -- might be global cooldowns, #509
+    expiry = castTimestamp + cooldown
   end
 
   if not expiry then
@@ -453,7 +456,7 @@ function Module:TryRecordTradeSkill(spellID, lastCast, cooldown)
     return 
     -- maybe nil it from the list?
   end
-  if not displayStr then
+  if not displayStr and not trackedItemCrafts[spellID] then
     if not self.missingWarned[spellID] then
       self.missingWarned[spellID] = true
       SI:BugReport("Unrecognized trade skill cd "..(GetSpellInfo(spellID) or "??").." ("..spellID..")")
@@ -557,7 +560,7 @@ function Module:ScanPlayerItemCooldowns()
   for spellID, itemID in pairs(trackedItemCrafts) do
     local start, duration = GetItemCooldown(itemID)
     if start and duration and start > 0 then
-      self:TryRecordTradeSkill(spellID, SI:GetTimestampAfter(-start), duration)
+      self:TryRecordTradeSkill(spellID, getCastTimestamp(start), duration)
     end
   end
 end
