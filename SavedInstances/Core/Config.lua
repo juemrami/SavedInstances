@@ -97,6 +97,7 @@ if SI.isClassicEra then
     [215] = "R1", -- 20m (SoD)
     [9]   = "R2", -- 40m
   }
+  -- Used for difficulty ID's that share the same name
   local diffRemap = {
     [184] = 1, -- SoM dungeons
     [201] = 1, -- Hardcore (daily reset)
@@ -104,6 +105,8 @@ if SI.isClassicEra then
     [198] = 197,
     [185] = 148, -- SoM 20m
     [186] = 9, -- SoM 40m
+    [226] = 215, -- SoD 20m
+    [231] = 9, -- SoD 40/20m flex for BWL
   }
   for k, _ in pairs(DIFFICULTY_STRINGS) do
     DIFFICULTY_STRINGS[k] = categories[k] or nil

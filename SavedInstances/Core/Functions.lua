@@ -48,7 +48,7 @@ do
 
     if bugReported['url'] and now < bugReported['url'] + 5 then return end
     bugReported['url'] = now
-    SI:ChatMsg("Please report this bug at: https://github.com/SavedInstances/SavedInstances/issues")
+    SI:ChatMsg("Please report this bug at: https://github.com/juemrami/SavedInstances_Classic/issues")
   end
 end
 
