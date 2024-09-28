@@ -37,10 +37,10 @@ local db
 -- https://wago.tools/db2/Difficulty?sort[ID]=desc
 -- retail (@10.2.5):  205 = "Follower"
 -- cata (@3.4.3): 194 = "25 Player (Heroic)"
--- classic (@1.15.0): 207 = "Normal" 
+-- classic (@1.15.4): 231 = "Normal", this is flex SoD raids
 local MAX_DIFFICULTY_ID = (SI.isRetail and 205) 
   or (SI.isCataclysm and 194) 
-  or (SI.isClassicEra and 215)
+  or (SI.isClassicEra and 231)
   or 33; -- old default
 
 
@@ -1509,7 +1509,23 @@ function SI:UpdateInstanceData()
       dungeonInstanceKeys[dungeonID] = instanceKey
     end
   end
-
+  -- Season of Discovery specific 1 boss raids.
+  if SI.isSoD then
+    local addInstance = function(spoofLfgID)
+      local instanceKey, isNewInstance  = SI:UpsertInstanceByDungeonID(spoofLfgID)
+      assert(instanceKey, "Expected hardcoded data to be provided for spoofed ID in `UpdateInstanceByDungeonID`", spoofLfgID)
+      if isNewInstance then newInstanceCount = newInstanceCount + 1 end
+        if dungeonInstanceKeys[spoofLfgID] then -- Only for debug purposes
+          SI:Debug("Duplicate entry in lfdid_to_name: "..spoofLfgID..":"..dungeonInstanceKeys[spoofLfgID]..":"..instanceKey)
+        end
+        dungeonInstanceKeys[spoofLfgID] = instanceKey
+    end
+    -- Note: Going to use lfg dungeon ids starting at 10001 to spoof these. 
+    -- See `UpsertInstanceByDungeonID` for the spoofed data.
+    addInstance(10001) -- Storm Cliffs - Azuregos
+    addInstance(10002) -- Tainted Scar - Lord Kazzak
+    addInstance(10003) -- Crystal Vale - Thunderaan
+  end
 
   --- Update the world boss data
   for encounterID, boss in pairs(SI.WorldBosses) do
@@ -1675,7 +1691,6 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
       -- dungeon and raid
       validTypes = {1, 2}
     else
-
       validTypes = {1, 2, 6}
     end
     return tContains(validTypes, typeID)
@@ -1749,9 +1764,32 @@ function SI:UpsertInstanceByDungeonID(dungeonID)
     difficultyID = 9 -- 40m
     typeID = 2
     subtypeID = LFG_SUBTYPEID_RAID
-  elseif dungeonID == 159 and not lfgName then
-    -- Naxx
+  elseif dungeonID == 159 and not lfgName then -- Naxx
     lfgName = GetRealZoneText(533)
+    expansionLevel = 0
+    recLevel = 60
+    maxPlayers = 40
+    difficultyID = 9 -- 40m
+    typeID = 2
+    subtypeID = LFG_SUBTYPEID_RAID
+  elseif dungeonID == 10001 and SI.isSoD then -- Storm Cliffs: Azuregos
+    lfgName = GetRealZoneText(2791)
+    expansionLevel = 0
+    recLevel = 60
+    maxPlayers = 40
+    difficultyID = 9 -- 40m
+    typeID = 2
+    subtypeID = LFG_SUBTYPEID_RAID
+  elseif dungeonID == 10002 and SI.isSoD then -- Tainted Scar: Kazzak
+    lfgName = GetRealZoneText(2789)
+    expansionLevel = 0
+    recLevel = 60
+    maxPlayers = 40
+    difficultyID = 9 -- 40m
+    typeID = 2
+    subtypeID = LFG_SUBTYPEID_RAID
+  elseif dungeonID == 10003 and SI.isSoD then -- Crystal Vale: Thunderaan
+    lfgName = GetRealZoneText(2804)
     expansionLevel = 0
     recLevel = 60
     maxPlayers = 40
